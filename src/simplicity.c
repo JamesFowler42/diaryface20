@@ -1,41 +1,34 @@
-#include "pebble_os.h"
-#include "pebble_app.h"
-#include "pebble_fonts.h"
+#include "pebble.h"
 #include "common.h"
 
-#define MY_UUID { 0x69, 0x8B, 0x3E, 0x04, 0xB1, 0x2E, 0x4F, 0xF5, 0xBF, 0xAD, 0x1B, 0xE6, 0xBD, 0xFE, 0xB4, 0xD7 }
-PBL_APP_INFO(MY_UUID, "Diary Face", "Max Baeumle/Fowler", 1, 2 /* App version */, DEFAULT_MENU_ICON, APP_INFO_WATCH_FACE);
+Window *window;
 
-AppContextRef app_context;
+TextLayer *text_date_layer;
+TextLayer *text_time_layer;
 
-Window window;
+Layer *line_layer;
 
-TextLayer text_date_layer;
-TextLayer text_time_layer;
+GBitmap *icon_battery;
+GBitmap *icon_status_1;
+GBitmap *icon_status_2;
+GBitmap *icon_status_3;
+GBitmap *icon_battery_charge;
+GBitmap *icon_entry_0;
+GBitmap *icon_entry_1;
+GBitmap *icon_entry_2;
+GBitmap *icon_entry_3;
+GBitmap *icon_entry_4;
+GBitmap *icon_entry_5;
+GBitmap *icon_pebble;
 
-Layer line_layer;
+Layer *battery_layer;
+Layer *status_layer;
+Layer *entry_layer;
+Layer *pebble_layer;
 
-HeapBitmap icon_battery;
-HeapBitmap icon_status_1;
-HeapBitmap icon_status_2;
-HeapBitmap icon_status_3;
-HeapBitmap icon_battery_charge;
-HeapBitmap icon_entry_0;
-HeapBitmap icon_entry_1;
-HeapBitmap icon_entry_2;
-HeapBitmap icon_entry_3;
-HeapBitmap icon_entry_4;
-HeapBitmap icon_entry_5;
-HeapBitmap icon_pebble;
-
-Layer battery_layer;
-Layer status_layer;
-Layer entry_layer;
-Layer pebble_layer;
-
-TextLayer text_event_title_layer;
-TextLayer text_event_start_date_layer;
-TextLayer text_event_location_layer;
+TextLayer *text_event_title_layer;
+TextLayer *text_event_start_date_layer;
+TextLayer *text_event_location_layer;
 InverterLayer inverse_layer;
 
 #ifdef INVERSE
@@ -59,18 +52,18 @@ int g_static_entry_no = 0;
  * Unload and return what we have taken
  */
 void window_unload(Window *window) {
-  heap_bitmap_deinit(&icon_battery);
-  heap_bitmap_deinit(&icon_battery_charge);	
-  heap_bitmap_deinit(&icon_status_1);	
-  heap_bitmap_deinit(&icon_status_2);	
-  heap_bitmap_deinit(&icon_status_3);	
-  heap_bitmap_deinit(&icon_entry_0);
-  heap_bitmap_deinit(&icon_entry_1);
-  heap_bitmap_deinit(&icon_entry_2);
-  heap_bitmap_deinit(&icon_entry_3);
-  heap_bitmap_deinit(&icon_entry_4);
-  heap_bitmap_deinit(&icon_entry_5);
-  heap_bitmap_deinit(&icon_pebble);
+  gbitmap_destroy(icon_battery);
+  gbitmap_destroy(icon_battery_charge);	
+  gbitmap_destroy(icon_status_1);	
+  gbitmap_destroy(icon_status_2);	
+  gbitmap_destroy(icon_status_3);	
+  gbitmap_destroy(icon_entry_0);
+  gbitmap_destroy(icon_entry_1);
+  gbitmap_destroy(icon_entry_2);
+  gbitmap_destroy(icon_entry_3);
+  gbitmap_destroy(icon_entry_4);
+  gbitmap_destroy(icon_entry_5);
+  gbitmap_destroy(icon_pebble);
 }
 
 /*
@@ -179,75 +172,63 @@ void pebble_layer_update_callback(Layer *layer, GContext *ctx) {
 /*
  * Display initialisation and further setup 
  */
-void handle_init(AppContextRef ctx) {
-  app_context = ctx;
-
-  // Window
-  window_init(&window, "Window");
-  window_set_window_handlers(&window, (WindowHandlers){
-    .unload = window_unload,
-  });
-  window_stack_push(&window, true /* Animated */);
-  window_set_background_color(&window, GColorBlack);
+void window_load(Window *window) {
 
   // Resources
-  resource_init_current_app(&APP_RESOURCES);
-  heap_bitmap_init(&icon_battery, RESOURCE_ID_BATTERY_ICON);
-  heap_bitmap_init(&icon_battery_charge, RESOURCE_ID_BATTERY_CHARGE_ICON);	
-  heap_bitmap_init(&icon_status_1, RESOURCE_ID_IMAGE_STATUS_1);
-  heap_bitmap_init(&icon_status_2, RESOURCE_ID_IMAGE_STATUS_2);
-  heap_bitmap_init(&icon_status_3, RESOURCE_ID_IMAGE_STATUS_3);
-  heap_bitmap_init(&icon_entry_0, RESOURCE_ID_ENTRY_0);
-  heap_bitmap_init(&icon_entry_1, RESOURCE_ID_ENTRY_1);
-  heap_bitmap_init(&icon_entry_2, RESOURCE_ID_ENTRY_2);
-  heap_bitmap_init(&icon_entry_3, RESOURCE_ID_ENTRY_3);
-  heap_bitmap_init(&icon_entry_4, RESOURCE_ID_ENTRY_4);
-  heap_bitmap_init(&icon_entry_5, RESOURCE_ID_ENTRY_5);
-  heap_bitmap_init(&icon_pebble, RESOURCE_ID_PEBBLE);
+  icon_battery = gbitmap_create_with_resource(RESOURCE_ID_BATTERY_ICON);
+  icon_battery_charge = gbitmap_create_with_resource(RESOURCE_ID_BATTERY_CHARGE_ICON);	
+  icon_status_1 = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_STATUS_1);
+  icon_status_2 = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_STATUS_2);
+  icon_status_3 = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_STATUS_3);
+  icon_entry_0 = gbitmap_create_with_resource(RESOURCE_ID_ENTRY_0);
+  icon_entry_1 = gbitmap_create_with_resource(RESOURCE_ID_ENTRY_1);
+  icon_entry_2 = gbitmap_create_with_resource(RESOURCE_ID_ENTRY_2);
+  icon_entry_3 = gbitmap_create_with_resource(RESOURCE_ID_ENTRY_3);
+  icon_entry_4 = gbitmap_create_with_resource(RESOURCE_ID_ENTRY_4);
+  icon_entry_5 = gbitmap_create_with_resource(RESOURCE_ID_ENTRY_5);
+  icon_pebble = gbitmap_create_with_resource(RESOURCE_ID_PEBBLE);
 
   // Date
-  text_layer_init(&text_date_layer, window.layer.frame);
-  text_layer_set_text_color(&text_date_layer, GColorWhite);
-  text_layer_set_background_color(&text_date_layer, GColorClear);
-  layer_set_frame(&text_date_layer.layer, GRect(0, 94, 143, 168-94));
-  text_layer_set_font(&text_date_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
-  text_layer_set_text_alignment	(&text_date_layer,GTextAlignmentCenter);
-  layer_add_child(&window.layer, &text_date_layer.layer);
+  text_date_layer =	text_layer_create(GRect(0, 94, 143, 168-94));
+  text_layer_set_text_color(text_date_layer, GColorWhite);
+  text_layer_set_background_color(text_date_layer, GColorClear);
+  text_layer_set_font(text_date_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
+  text_layer_set_text_alignment(text_date_layer, GTextAlignmentCenter);
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_date_layer));
 
-  // Time
-  text_layer_init(&text_time_layer, window.layer.frame);
-  text_layer_set_text_color(&text_time_layer, GColorWhite);
-  text_layer_set_background_color(&text_time_layer, GColorClear);
-  layer_set_frame(&text_time_layer.layer, GRect(0, 112, 143, 168-112));
-  text_layer_set_font(&text_time_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_BOLD_SUBSET_49)));
-  text_layer_set_text_alignment	(&text_time_layer,GTextAlignmentCenter);
-  layer_add_child(&window.layer, &text_time_layer.layer);
+  // Time 
+  text_time_layer = text_layer_create(GRect(0, 112, 143, 168-112));
+  text_layer_set_text_color(text_time_layer, GColorWhite);
+  text_layer_set_background_color(text_time_layer, GColorClear);
+  text_layer_set_font(text_time_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_BOLD_SUBSET_49)));
+  text_layer_set_text_alignment	(text_time_layer,GTextAlignmentCenter);
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_time_layer));
 
   // Line
-  layer_init(&line_layer, window.layer.frame);
-  line_layer.update_proc = &line_layer_update_callback;
-  layer_add_child(&window.layer, &line_layer);
+  line_layer = layer_create(GRect(0,0,144,168));
+  layer_set_update_proc(line_layer, line_layer_update_callback);
+  layer_add_child(window_get_root_layer(window), line_layer);
  
   // Event title
-  text_layer_init(&text_event_title_layer, GRect(1, 18, window.layer.bounds.size.w - 1, 21));
-  text_layer_set_text_color(&text_event_title_layer, GColorWhite);
-  text_layer_set_background_color(&text_event_title_layer, GColorClear);
-  text_layer_set_font(&text_event_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
-  layer_add_child(&window.layer, &text_event_title_layer.layer);
+  text_event_title_layer = text_layer_create(GRect(1, 18, window.layer.bounds.size.w - 1, 21));
+  text_layer_set_text_color(text_event_title_layer, GColorWhite);
+  text_layer_set_background_color(text_event_title_layer, GColorClear);
+  text_layer_set_font(text_event_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));  
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_event_title_layer));
 
   // Date 
-  text_layer_init(&text_event_start_date_layer, GRect(1, 36, window.layer.bounds.size.w - 1, 21));
-  text_layer_set_text_color(&text_event_start_date_layer, GColorWhite);
-  text_layer_set_background_color(&text_event_start_date_layer, GColorClear);
-  text_layer_set_font(&text_event_start_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-  layer_add_child(&window.layer, &text_event_start_date_layer.layer);
+  text_event_start_date_layer = text_layer_create(GRect(1, 36, window.layer.bounds.size.w - 1, 21));
+  text_layer_set_text_color(text_event_start_date_layer, GColorWhite);
+  text_layer_set_background_color(text_event_start_date_layer, GColorClear);
+  text_layer_set_font(text_event_start_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_event_start_date_layer));
 
   // Location
-  text_layer_init(&text_event_location_layer, GRect(1, 54, window.layer.bounds.size.w - 1, 21));
-  text_layer_set_text_color(&text_event_location_layer, GColorWhite);
-  text_layer_set_background_color(&text_event_location_layer, GColorClear);
-  text_layer_set_font(&text_event_location_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-  layer_add_child(&window.layer, &text_event_location_layer.layer);
+  text_event_location_layer = text_layer_init(GRect(1, 54, window.layer.bounds.size.w - 1, 21));
+  text_layer_set_text_color(text_event_location_layer, GColorWhite);
+  text_layer_set_background_color(text_event_location_layer, GColorClear);
+  text_layer_set_font(text_event_location_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_event_location_layer));
 
   // Battery
   GRect frame;
@@ -256,9 +237,9 @@ void handle_init(AppContextRef ctx) {
   frame.size.w = 24;
   frame.size.h = 12;
 
-  layer_init(&battery_layer, frame);
-  battery_layer.update_proc = &battery_layer_update_callback;
-  layer_add_child(&window.layer, &battery_layer);
+  battery_layer = layer_create(frame);
+  layer_set_update_proc(battery_layer, battery_layer_update_callback);
+  layer_add_child(window_get_root_layer(window), battery_layer);
 
   // Status 	
   GRect frameb;
@@ -267,9 +248,9 @@ void handle_init(AppContextRef ctx) {
   frameb.size.w = 38;
   frameb.size.h = 12;
 
-  layer_init(&status_layer, frameb);
-  status_layer.update_proc = &status_layer_update_callback;
-  layer_add_child(&window.layer, &status_layer);
+  status_layer = layer_create(frameb);
+  layer_set_update_proc(status_layer, status_layer_update_callback);
+  layer_add_child(window_get_root_layer(window), status_layer);
 
   // Calendar entry indicator	
   GRect framec;
@@ -278,9 +259,9 @@ void handle_init(AppContextRef ctx) {
   framec.size.w = 60;
   framec.size.h = 12;
 
-  layer_init(&entry_layer, framec);
-  entry_layer.update_proc = &entry_layer_update_callback;
-  layer_add_child(&window.layer, &entry_layer);
+  entry_layer = layer_create(framec);
+  layer_set_update_proc(entry_layer, entry_layer_update_callback);
+  layer_add_child(window_get_root_layer(window), entry_layer);
 	
   // Pebble word
   GRect framed;
@@ -289,14 +270,14 @@ void handle_init(AppContextRef ctx) {
   framed.size.w = 27;
   framed.size.h = 8;
 
-  layer_init(&pebble_layer, framed);
-  pebble_layer.update_proc = &pebble_layer_update_callback;
-  layer_add_child(&window.layer, &pebble_layer);
+  pebble_layer = layer_create(framed);
+  layer_set_update_proc(pebble_layer, pebble_layer_update_callback);
+  layer_add_child(window_get_root_layer(window), pebble_layer);
 
   // Layer to invert when showing event
-  inverter_layer_init(&inverse_layer, GRect(0, 0, window.layer.bounds.size.w, 78));
-  layer_set_hidden(&inverse_layer.layer, true);
-  layer_add_child(&window.layer, &inverse_layer.layer);
+  inverse_layer = inverter_layer_create(GRect(0, 0, window.layer.bounds.size.w, 78));
+  layer_set_hidden(inverter_layer_get_layer(inverse_layer), true);
+  layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(inverse_layer));
 	
   // Put everything in an initial state
   set_battery(0,-1); 
@@ -308,8 +289,8 @@ void handle_init(AppContextRef ctx) {
 	
   // Configurable inverse
   #ifdef INVERSE
-  inverter_layer_init(&full_inverse_layer, GRect(0, 0, window.layer.bounds.size.w, window.layer.bounds.size.h));
-  layer_add_child(&window.layer, &full_inverse_layer.layer);
+  full_inverse_layer = inverter_layer_create(GRect(0, 0, window.layer.bounds.size.w, window.layer.bounds.size.h));
+  layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(full_inverse_layer));
   #endif
 }
 
@@ -317,7 +298,7 @@ void handle_init(AppContextRef ctx) {
  * Highlight the event
  */
 void set_invert_when_showing_event(bool invert) {
-  layer_set_hidden(&inverse_layer.layer, !invert);
+  layer_set_hidden(inverter_layer_get_layer(inverse_layer), !invert);
 }
 
 /*
@@ -337,6 +318,32 @@ void handle_minute_tick(AppContextRef ctx, PebbleTickEvent *t) {
     text_layer_set_text(&text_time_layer, g_time_text);
 	
 	sync_timed_event(t->tick_time->tm_min, ctx);
+}
+
+static void init(void) {
+  window = window_create();
+  window_set_background_color(window, GColorBlack);
+  window_set_fullscreen(window, true);
+  window_set_window_handlers(window, (WindowHandlers) {
+    .load = window_load,
+    .unload = window_unload
+  });
+
+  const int inbound_size = app_message_inbox_size_maximum();
+  const int outbound_size = app_message_outbox_size_maximum();
+
+  app_message_open(inbound_size, outbound_size);
+
+  const bool animated = true;
+  window_stack_push(window, animated);
+
+  tick_timer_service_subscribe(MINUTE_UNIT, &handle_minute_tick);
+}
+
+int main(void) {
+ init();
+ app_event_loop();
+ deinit();
 }
 
 /*

@@ -1,6 +1,4 @@
-#include "pebble_os.h"
-#include "pebble_app.h"
-#include "pebble_fonts.h"
+#include "pebble.h"
 #include "common.h"
 
 /*
@@ -16,7 +14,7 @@ bool isLeapYear(int year)
 /*
  * Crude add days routine
  */
-void time_plus_day(PblTm *time, int daysToAdvance) {
+void time_plus_day(struct tm *time, int daysToAdvance) {
   
   int daysPerMonth[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
   
@@ -54,8 +52,8 @@ void time_plus_day(PblTm *time, int daysToAdvance) {
  * Is overnight
  */
 bool is_overnight() {
-	PblTm time;
-    get_time(&time);
+	time_t now = time(NULL);
+	struct tm *time = localtime(&now);
 	return (time.tm_hour >= OVERNIGHT_START && time.tm_hour <= OVERNIGHT_END);
 }
 
@@ -78,9 +76,9 @@ int a_to_i(char *val, int len) {
  */
 bool is_date_today(char *date) {
 	char temp[6];
-	PblTm time;
-  	  get_time(&time);
-	  string_format_time(temp, sizeof(temp), "%m/%d", &time);
+	time_t now = time(NULL);
+	struct tm *time = localtime(&now);
+    strftime(temp, sizeof(temp), "%m/%d", &time);
 	if (strncmp(date, temp, 5) == 0)
 		return true;
 	else
