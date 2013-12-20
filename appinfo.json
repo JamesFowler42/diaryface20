@@ -8,17 +8,12 @@
         ""
     ],
     "shortName": "Diary Face",
-    "companyName": "Max Baeumle/Fowler",
+    "companyName": "Max Baeumle/James Fowler",
     "watchapp": {
-        "watchface": false
+        "watchface": true
     },
     "resources": {
         "media": [
-            {
-                "type": "png",
-                "name": "IMAGE_STATUS_3",
-                "file": "images/status3.png"
-            },
             {
                 "type": "png",
                 "name": "IMAGE_STATUS_2",
@@ -31,8 +26,13 @@
             },
             {
                 "type": "png",
-                "name": "BATTERY_ICON",
-                "file": "images/battery_icon.png"
+                "name": "PHONE_BATTERY_ICON",
+                "file": "images/phone-battery-normal.png"
+            },
+            {
+                "type": "png",
+                "name": "WATCH_BATTERY_ICON",
+                "file": "images/watch-battery-normal.png"
             },
             {
                 "characterRegex": "[:0-9]",
@@ -47,8 +47,13 @@
             },
             {
                 "type": "png",
-                "name": "BATTERY_CHARGE_ICON",
-                "file": "images/battery-charge.png"
+                "name": "PHONE_BATTERY_CHARGE_ICON",
+                "file": "images/phone-battery-charge.png"
+            },
+            {
+                "type": "png",
+                "name": "WATCH_BATTERY_CHARGE_ICON",
+                "file": "images/watch-battery-charge.png"
             },
             {
                 "type": "png",

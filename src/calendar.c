@@ -1,9 +1,32 @@
+/*
+ * Diary Face
+ *
+ * Copyright (c) 2013 James Fowler/Max Baeumle
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
 #include "pebble.h"
 #include "common.h"
 	
 Event g_events[MAX_EVENTS];
 Event g_rot_events[ROT_MAX];
-TimerRecord g_timer_rec[MAX_EVENTS * 2];
 BatteryStatus g_battery_status;
 
 uint8_t g_count;
@@ -16,9 +39,9 @@ bool g_first_time = true;
 CloseDay g_close[7];
 int g_last_tm_mday = -1;
 
-AppContextRef g_app_context;
-
-bool g_showing_alert = false;
+bool nothing_showing = true;
+uint8_t rotate_tick = 0;
+uint8_t rotate_change = MAX_SECOND_PER_ROTATE;
 
 /*
  * Make a calendar request
@@ -26,16 +49,16 @@ bool g_showing_alert = false;
 void calendar_request() {
 
   DictionaryIterator *iter;
-  app_message_out_get(&iter);
+  app_message_outbox_begin(&iter);
   if (!iter) 
 	return;
 		
   dict_write_int8(iter, REQUEST_CALENDAR_KEY, -1);
   dict_write_uint8(iter, CLOCK_STYLE_KEY, CLOCK_STYLE_24H);
+  dict_write_end(iter);
   g_count = 0;
   g_received_rows = 0;
-  app_message_out_send();
-  app_message_out_release();
+  app_message_outbox_send();
   set_status(STATUS_REQUEST);
 }
 
@@ -45,25 +68,35 @@ void calendar_request() {
 void battery_request() {
 
   DictionaryIterator *iter;
-  app_message_out_get(&iter);
+  app_message_outbox_begin(&iter);
   if (!iter) 
 	return;
 
   dict_write_uint8(iter, REQUEST_BATTERY_KEY, 1);
-  app_message_out_send();
-  app_message_out_release();
+  dict_write_end(iter);
+  app_message_outbox_send();
+}
+
+/*
+ * Fire the find my phone alarm
+ */
+void fire_alarm() {
+
+  DictionaryIterator *iter;
+  app_message_outbox_begin(&iter);
+  if (!iter)
+	return;
+
+  dict_write_uint8(iter, UTILITIES_FIND_MY_PHONE_CHANGE_KEY, 1);
+  dict_write_end(iter);
+  app_message_outbox_send();
 }
 
 /*
  * Get the calendar running
  */
-void calendar_init(AppContextRef ctx) {
-  g_app_context = ctx;
-  for (uint8_t i=0; i < (MAX_EVENTS * 2); i++) {
-     g_timer_rec[i].active = false;
-  }	
+void calendar_init() {
   memset(&g_events, 0, sizeof(Event) * MAX_EVENTS);
-  app_timer_send_event(ctx, ROTATE_EVENT_INTERVAL_MS, ROTATE_EVENT);
 }
 
 /*
@@ -71,20 +104,23 @@ void calendar_init(AppContextRef ctx) {
  */
 void ensure_close_day_cache() {
 
-	PblTm time;
-	get_time(&time);
+	time_t now = time(NULL);
+	struct tm *now_tm = localtime(&now);
 	
-	if (time.tm_mday == g_last_tm_mday)
+	struct tm fiddle;
+	
+	if (now_tm->tm_mday == g_last_tm_mday)
 		return;
 	
-	g_last_tm_mday = time.tm_mday;
+	g_last_tm_mday = now_tm->tm_mday;
+	
+	memcpy(&fiddle, now_tm, sizeof(fiddle));
 	
 	for (int i=0; i < 7; i++) {
-  	  get_time(&time);
 	  if (i>0)
-	    time_plus_day(&time, i);
-	  string_format_time(g_close[i].date, CLOSE_DATE_SIZE, "%m/%d", &time);
-	  string_format_time(g_close[i].dayName, CLOSE_DAY_NAME_SIZE, "%A", &time);
+	    time_plus_day(&fiddle, i);
+	  strftime(g_close[i].date, CLOSE_DATE_SIZE, "%m/%d", &fiddle);
+	  strftime(g_close[i].dayName, CLOSE_DAY_NAME_SIZE, "%A", &fiddle);
 	}
 	strcpy(g_close[0].dayName, TODAY);
 	strcpy(g_close[1].dayName, TOMORROW);
@@ -125,154 +161,19 @@ void modify_calendar_time(char *output, int outlen, char *date, bool all_day) {
 
 	// If not found then show the month and the day
 	if (!found) {
-		PblTm time;
-	    get_time(&time);
-		time.tm_mday = a_to_i(&date[3],2);
-		time.tm_mon = a_to_i(&date[0],2) - 1;
-		string_format_time(temp, sizeof(temp), "%b %e -", &time);
+	    time_t now = time(NULL);
+	    struct tm *now_tm = localtime(&now);
+		struct tm fiddle;
+		memcpy(&fiddle, now_tm, sizeof(fiddle));
+		fiddle.tm_mday = a_to_i(&date[3],2);
+		fiddle.tm_mon = a_to_i(&date[0],2) - 1;
+		strftime(temp, sizeof(temp), "%b %e -", &fiddle);
 	}
 	// Change the format based on whether there is a timestamp
 	if (all_day)
 		snprintf(output, outlen, "%s %s", temp, ALL_DAY);
 	else
 	    snprintf(output, outlen, "%s %s", temp, &date[time_position]);
-}
-
-/*
- * Queue an alert
- */
-void queue_alert(int num, int32_t alarm_time, char *title, int32_t alert_event, char *location) {
-  // work out relative time
-  char relative_temp[21];
-  if (alarm_time == 0)
-       strncpy(relative_temp, TEXT_NOW, sizeof(relative_temp));
-  else if (alarm_time <  3600)
-       snprintf(relative_temp, sizeof(relative_temp), TEXT_MINS, alarm_time / 60);
-  else 
-       snprintf(relative_temp, sizeof(relative_temp), TEXT_HRS, alarm_time / 3600);
-
-  // Create an alert
-  g_timer_rec[num].handle = app_timer_send_event(g_app_context, alert_event, ALERT_EVENT + num);
-  g_timer_rec[num].active = true;
-  strncpy(g_timer_rec[num].event_desc, title, BASIC_SIZE); 
-  strncpy(g_timer_rec[num].relative_desc, relative_temp, BASIC_SIZE);
-  strncpy(g_timer_rec[num].location, location, BASIC_SIZE);
-}
-
-/*
- * Do we need an alert? if so schedule one. 
- */
-int determine_if_alarm_needed(int num) {
-  // Copy the event for easy access
-  Event event;	
-  memcpy(&event, &g_events[num], sizeof(Event));
-	
-  // Alarms set
-  int alarms_set = 0;
-	
-  // Ignore all day events
-	if (event.all_day) {
-	  return alarms_set; 
-	}
-
-  // Is the event today
-  if (is_date_today(event.start_date) == false) {
-	  return alarms_set;
-  }
- 	
-  // Does the event have an alarm
-  if (event.alarms[0] == -1 && event.alarms[1] == -1) {
-	  return alarms_set;
-  }
-
-  // Compute the event start time as a figure in ms
-  int time_position = 9;
-  if (event.start_date[5] != '/')
-		time_position = 6;
-
-  int hour = a_to_i(&event.start_date[time_position],2);
-  int minute_position = time_position + 3;
-  if (event.start_date[time_position + 1] == ':')
-	  minute_position = time_position + 2;
-  int minute = a_to_i(&event.start_date[minute_position],2);
-	
-  uint32_t event_in_ms = (hour * 3600 + minute * 60) * 1000;
-	
-  // Get now as ms
-  PblTm time;
-  get_time(&time);
-  uint32_t now_in_ms = (time.tm_hour * 3600 + time.tm_min * 60 + time.tm_sec) * 1000;
-
-  // First alart
-  if (event.alarms[0] != -1) {
-	  
-  	// Work out the alert interval  
-  	int32_t alert_event = event_in_ms - now_in_ms - (event.alarms[0] * 1000);
-
-  	// If this is negative then we are after the alert period
-  	if (alert_event >= 0) {
-		
-		// Make sure we have the resources for another alert
-		g_alerts_issued++;
-		if (g_alerts_issued > MAX_ALLOWABLE_ALERTS)	
-			return alarms_set;
-		
-		// Queue alert
-		queue_alert(num, event.alarms[0], event.title, alert_event, event.has_location ? event.location : "");
-		alarms_set++;
-    }
-  }
-
-  // Second alart
-  if (event.alarms[1] != -1) {
-
-    // Work out the alert interval  
-  	int32_t alert_event = event_in_ms - now_in_ms - (event.alarms[1] * 1000);
-
-  	// If this is negative then we are after the alert period
-  	if (alert_event >= 0) {
-
-		// Make sure we have the resources for another alert
-		g_alerts_issued++;
-		if (g_alerts_issued > MAX_ALLOWABLE_ALERTS)	
-			return alarms_set;
-
-		// Queue alert
-		queue_alert(num + 15, event.alarms[1], event.title, alert_event, event.has_location ? event.location : "");
-		alarms_set++;
-    }
-  }
-
-  return alarms_set;
-}
-
-/*
- * Clear existing timers
- */
-void clear_timers() {
-	for (int i=0; i < (MAX_EVENTS * 2); i++) {
-		if (g_timer_rec[i].active) {
-			g_timer_rec[i].active = false;
-			app_timer_cancel_event(g_app_context, g_timer_rec[i].handle);
-		}
-	}
-}
-
-/*
- * Work through events returned from iphone
- */
-void process_events() {
-  if (g_max_entries == 0) {
-    clear_timers();	
-  } else {
-    clear_timers();	
-	int alerts = 0;
-	g_alerts_issued = 0;  
-    for (uint8_t i = 0; i < g_max_entries; i++) 
-	  alerts = alerts + determine_if_alarm_needed(i);
-	if (alerts > 0) 
-		set_status(STATUS_ALERT_SET);
-   }
 }
 
 /*
@@ -311,9 +212,6 @@ void show_event(uint8_t num) {
  * have been offline for some while and hence what is being displayed could be inaccurate.
  */
 void show_next_event() {
-  // Don't mess up an alert that is underway
-  if (g_showing_alert)
-	  return;
   // Else get processing
   if (g_max_entries == 0) {
 	clear_event();
@@ -366,8 +264,11 @@ void received_message(DictionaryIterator *received, void *context) {
 
         if (g_count == g_received_rows) {
 			g_max_entries = g_count;
-			process_events();
 			process_rot_events();
+			if (nothing_showing) {
+				nothing_showing = false;
+				show_next_event();
+			}
 			battery_request();
 	    }
 	}
@@ -382,86 +283,108 @@ void received_message(DictionaryIterator *received, void *context) {
 }
 
 /*
- * Clock syncronised timer
+ * Update event timer
  */
-void sync_timed_event(int tm_min, AppContextRef ctx) {
-	
-	// Only on the 10 minute clicks (importantly includes midnight)
-	if (tm_min % 10 != 0 && !g_first_time)
-		return;
+void minute_timer(int tm_min) {
 
+	// First time
 	if (g_first_time) {
 		g_first_time = false;
 		calendar_request();
-	} else {
-		// Delay for 35 seconds after the minute to ensure that alerts have already happened
-		app_timer_send_event(ctx, 35000, REQUEST_CALENDAR_KEY);	
+		return;
 	}
 
+	// Only on the 10 minute clicks (importantly includes midnight)
+	if (tm_min % 10 != 0)
+		return;
+
+	calendar_request();
+}
+
+/**
+ * Rotate timer
+ */
+void second_timer() {
+
+	// rotate display
+	rotate_tick++;
+	if (rotate_tick >= rotate_change) {
+		rotate_tick = 0;
+	    show_next_event();
+	    if (rotate_change < MAX_SECOND_PER_ROTATE && g_entry_no == 1)
+	    	rotate_change++;
+	}
 }
 
 
 /*
- * Timer handling. Includes a hold off for a period of time if there is resource contention
+ * Can't be bothered to play with negative numbers
  */
-void handle_calendar_timer(AppContextRef app_ctx, AppTimerHandle handle, uint32_t cookie) {
-	
-  // If we're rotating the visible event, get on with it. Slower overnight to save power
-  if (cookie == ROTATE_EVENT) {
-	  // Clobber the timer
-	  app_timer_cancel_event(app_ctx, handle);
-	  
-	  // Show next event 
-      show_next_event();
-	  
-	  // Kick off new timer
-	  if (is_overnight()) 
-    	app_timer_send_event(app_ctx, ROTATE_EVENT_INTERVAL_OVERNIGHT_MS, cookie);
-	  else
-    	app_timer_send_event(app_ctx, ROTATE_EVENT_INTERVAL_MS, cookie);
-	
-	  // Retire from active duty
-	  return;
-  }
-	
-  // Show the alert and let the world know
-  if (cookie >= ALERT_EVENT && cookie <= (ALERT_EVENT + (MAX_EVENTS * 2))) {
-	  app_timer_cancel_event(app_ctx, handle);
-	  int num = cookie - ALERT_EVENT;
-	  if (g_timer_rec[num].active == false)
-		  return; // Already had the data for this event deleted - cannot show it.
-	  g_timer_rec[num].active = false;
-	  g_showing_alert = true;
-      set_event_display(g_timer_rec[num].event_desc, g_timer_rec[num].relative_desc, g_timer_rec[num].location, 0);
-	  set_invert_when_showing_event(true);
-	  app_timer_send_event(app_ctx, 30000, RESTORE_DATE);	
-	  app_timer_send_event(app_ctx, 15000, SECOND_ALERT);	
-	  vibes_double_pulse();
-      light_enable_interaction();
-	  return;
-  }
+static uint16_t scale_accel(int16_t val) {
+	int16_t retval = 4000 + val;
+	if (retval < 0)
+		retval = 0;
+	return retval;
+}
 
-  // Let us know again
-  if (cookie == SECOND_ALERT) {
-      app_timer_cancel_event(app_ctx, handle);
-      vibes_double_pulse();
-      light_enable_interaction();
-      return;
-   }
-      
-  // Put the date back into the display area	
-  if (cookie == RESTORE_DATE) {
-	  app_timer_cancel_event(app_ctx, handle);
-	  g_showing_alert = false;
-	  show_next_event();
-	  set_invert_when_showing_event(false);
-	  return;
-  }
+/*
+ * Has pebble been tapped?
+ */
+void accel_data_handler(AccelData *data, uint32_t num_samples) {
+	// Average the data
+	uint32_t avg_x = 0;
+	uint32_t avg_y = 0;
+	uint32_t avg_z = 0;
+	AccelData *dx = data;
+	for (uint32_t i = 0; i < num_samples; i++, dx++) {
+		avg_x = avg_x + scale_accel(dx->x);
+		avg_y = avg_y + scale_accel(dx->y);
+		avg_z = avg_z + scale_accel(dx->z);
+	}
+	avg_x = avg_x / num_samples;
+	avg_y = avg_y / num_samples;
+	avg_z = avg_z / num_samples;
 
-  // Fire the calendar request
-  if (cookie == REQUEST_CALENDAR_KEY) {
-	  app_timer_cancel_event(app_ctx, handle);
-	  calendar_request();
-  }
+	// Work out deviations
+	uint16_t biggest = 0;
+	AccelData *d = data;
+	for (uint32_t i = 0; i < num_samples; i++, d++) {
+		uint16_t x = scale_accel(d->x) ;
+		uint16_t y = scale_accel(d->y) ;
+		uint16_t z = scale_accel(d->z) ;
+
+		if (x < avg_x)
+			x = avg_x - x;
+		else
+			x = x - avg_x;
+
+		if (y < avg_y)
+			y = avg_y - y;
+		else
+			y = y - avg_y;
+
+		if (z < avg_z)
+			z = avg_z - z;
+		else
+			z = z - avg_z;
+
+		// Store the largest deviation in the period
+		if (x > biggest) biggest = x;
+		if (y > biggest) biggest = y;
+		if (z> biggest) biggest = z;
+
+	}
+
+	// Waggle wrist and we start rotating events faster
+	if (biggest >= 200) {
+	  rotate_change = MIN_SECOND_PER_ROTATE;
+	}
+
+#ifdef ATTACK_ALARM
+	if (biggest > 3000) {
+		fire_alarm();
+	}
+#endif
 
 }
+
