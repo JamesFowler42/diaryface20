@@ -1,15 +1,13 @@
-Diary Face
-==========
+Diary Face 2.0
+==============
 
 This is a simple digital watchface for use with Max Bäumle's Smartwatch Pro.
 
-It provides calendar alerts for events with a time in the current day. The watch will vibrate twice and turn the light on. 15 seconds later it will vibrate and light again. The event is shown with location and a relative time (e.g. In 15 mins).
+The watch face shows the next 5 calendar events in rotation. The time of the event is turned from a simple date into an easier to read 'today', 'tomorrow', 'Tuesday' or, if sufficiently far in the future the date as month name and day. If the watch detects movement the events change every 3 seconds but this gradually slows down to 30 seconds per change to save battery.
 
-When not showing an alert the watch face shows the next 5 calendar events in rotation. The time of the event is turned from a simple date into an easier to read 'today', 'tomorrow', 'Tuesday' or, if sufficiently far in the future the date as month name and day. The events are shown for 3 seconds each during the day and 10 seconds each overnight to save power.
+The status bar shows the event being shown (1-5), an indication of communcation with your iPhone (top arrow is a request, bottom arrow a reply), the phone battery state and the Pebble battery state.
 
-The iPhone battery status is shown giving a level and, if on charge, a charging indicator.
+A very violent movement of your wrist (clapping isn't enough during my tests) will sound the "find my iphone". 
 
-There are three indicators showing communication from Pebble to iPhone, iPhone to Pebble and whether an alert has been set. 
 
-I RECOMMEND REMOVING OTHER WATCHFACES USING SMARTWATCH PRO BEFORE INSTALLING. E.G. MODERN CALENDAR.
 
