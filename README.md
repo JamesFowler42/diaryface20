@@ -9,5 +9,7 @@ The status bar shows the event being shown (1-5), an indication of communcation 
 
 A very violent movement of your wrist (clapping isn't enough during my tests) will sound the "find my iphone". 
 
+Note: The calendar alert facility found in the SDK1.x version of this software has been retired, as ios7 ANCS notifications surplant it.
+
 
 
