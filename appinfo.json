@@ -1,9 +1,9 @@
 {
-    "versionLabel": "2.0",
+    "versionLabel": "2.1",
     "uuid": "698B3E04-B12E-4FF5-BFAD-1BE6BDFEB4D7",
     "appKeys": {},
     "longName": "Diary Face",
-    "versionCode": 2,
+    "versionCode": 3,
     "capabilities": [
         ""
     ],

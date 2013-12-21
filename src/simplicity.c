@@ -313,7 +313,7 @@ void window_load(Window *window) {
   layer_add_child(window_get_root_layer(window), pebble_layer);
 	
   // Put everything in an initial state
-  set_battery(0,-1); 
+  set_battery(1,50);
   set_status(STATUS_REQUEST);
   set_event_display("", "", "", 0);
 	

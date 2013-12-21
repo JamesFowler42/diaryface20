@@ -42,6 +42,9 @@ int g_last_tm_mday = -1;
 bool nothing_showing = true;
 uint8_t rotate_tick = 0;
 uint8_t rotate_change = MAX_SECOND_PER_ROTATE;
+#ifdef ATTACK_ALARM
+int alarm_value = UTILITIES_FIND_MY_PHONE_PAUSE;
+#endif
 
 /*
  * Make a calendar request
@@ -87,7 +90,7 @@ void fire_alarm() {
   if (!iter)
 	return;
 
-  dict_write_uint8(iter, UTILITIES_FIND_MY_PHONE_CHANGE_KEY, 1);
+  dict_write_uint8(iter, UTILITIES_FIND_MY_PHONE_CHANGE_KEY, alarm_value);
   dict_write_end(iter);
   app_message_outbox_send();
 }
@@ -114,9 +117,8 @@ void ensure_close_day_cache() {
 	
 	g_last_tm_mday = now_tm->tm_mday;
 	
-	memcpy(&fiddle, now_tm, sizeof(fiddle));
-	
 	for (int i=0; i < 7; i++) {
+	  memcpy(&fiddle, now_tm, sizeof(fiddle));
 	  if (i>0)
 	    time_plus_day(&fiddle, i);
 	  strftime(g_close[i].date, CLOSE_DATE_SIZE, "%m/%d", &fiddle);
@@ -381,9 +383,13 @@ void accel_data_handler(AccelData *data, uint32_t num_samples) {
 	}
 
 #ifdef ATTACK_ALARM
-	if (biggest > 3000) {
+	if (biggest > 3000 && alarm_value == UTILITIES_FIND_MY_PHONE_PAUSE) {
+		alarm_value = UTILITIES_FIND_MY_PHONE_PLAY;
 		fire_alarm();
-	}
+	} else if (biggest > 2000 && alarm_value == UTILITIES_FIND_MY_PHONE_PLAY) {
+		alarm_value = UTILITIES_FIND_MY_PHONE_PAUSE;
+		fire_alarm();
+    }
 #endif
 
 }
