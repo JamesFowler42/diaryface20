@@ -42,9 +42,6 @@ int g_last_tm_mday = -1;
 bool nothing_showing = true;
 uint8_t rotate_tick = 0;
 uint8_t rotate_change = MAX_SECOND_PER_ROTATE;
-#ifdef ATTACK_ALARM
-int alarm_value = UTILITIES_FIND_MY_PHONE_PAUSE;
-#endif
 
 /*
  * Make a calendar request
@@ -76,21 +73,6 @@ void battery_request() {
 	return;
 
   dict_write_uint8(iter, REQUEST_BATTERY_KEY, 1);
-  dict_write_end(iter);
-  app_message_outbox_send();
-}
-
-/*
- * Fire the find my phone alarm
- */
-void fire_alarm() {
-
-  DictionaryIterator *iter;
-  app_message_outbox_begin(&iter);
-  if (!iter)
-	return;
-
-  dict_write_uint8(iter, UTILITIES_FIND_MY_PHONE_CHANGE_KEY, alarm_value);
   dict_write_end(iter);
   app_message_outbox_send();
 }
@@ -381,16 +363,6 @@ void accel_data_handler(AccelData *data, uint32_t num_samples) {
 	if (biggest >= 200) {
 	  rotate_change = MIN_SECOND_PER_ROTATE;
 	}
-
-#ifdef ATTACK_ALARM
-	if (biggest > 3000 && alarm_value == UTILITIES_FIND_MY_PHONE_PAUSE) {
-		alarm_value = UTILITIES_FIND_MY_PHONE_PLAY;
-		fire_alarm();
-	} else if (biggest > 2000 && alarm_value == UTILITIES_FIND_MY_PHONE_PLAY) {
-		alarm_value = UTILITIES_FIND_MY_PHONE_PAUSE;
-		fire_alarm();
-    }
-#endif
 
 }
 
