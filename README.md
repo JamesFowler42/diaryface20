@@ -7,8 +7,6 @@ The watch face shows the next 5 calendar events in rotation. The time of the eve
 
 The status bar shows the event being shown (1-5), an indication of communcation with your iPhone (top arrow is a request, bottom arrow a reply), the phone battery state and the Pebble battery state.
 
-A very violent movement of your wrist (clapping isn't enough during my tests) will sound the "find my iphone". 
-
 Note: The calendar alert facility found in the SDK1.x version of this software has been retired, as ios7 ANCS notifications surplant it.
 
 
