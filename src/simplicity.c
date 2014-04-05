@@ -25,64 +25,113 @@
 #include "pebble.h"
 #include "common.h"
 
-Window *window;
+static Window *window;
 
-TextLayer *text_date_layer;
-TextLayer *text_time_layer;
+static GBitmap *icon_phone_battery;
+static GBitmap *icon_status_1;
+static GBitmap *icon_status_2;
+static GBitmap *icon_phone_battery_charge;
+static GBitmap *icon_entry_0;
+static GBitmap *icon_entry_1;
+static GBitmap *icon_entry_2;
+static GBitmap *icon_entry_3;
+static GBitmap *icon_entry_4;
+static GBitmap *icon_entry_5;
+static GBitmap *icon_pebble;
+static GBitmap *icon_watch_battery;
+static GBitmap *icon_watch_battery_charge;
 
-Layer *line_layer;
+static Layer *line_layer;
+static Layer *scroll_layer;
+static Layer *i_battery_layer;
+static Layer *p_battery_layer;
+static Layer *status_layer;
+static Layer *entry_layer;
+static Layer *pebble_layer;
 
-GBitmap *icon_phone_battery;
-GBitmap *icon_status_1;
-GBitmap *icon_status_2;
-GBitmap *icon_phone_battery_charge;
-GBitmap *icon_entry_0;
-GBitmap *icon_entry_1;
-GBitmap *icon_entry_2;
-GBitmap *icon_entry_3;
-GBitmap *icon_entry_4;
-GBitmap *icon_entry_5;
-GBitmap *icon_pebble;
-GBitmap *icon_watch_battery;
-GBitmap *icon_watch_battery_charge;
+static TextLayer *text_date_layer;
+static TextLayer *text_time_layer;
+static TextLayer *text_event_title_layer;
+static TextLayer *text_event_start_date_layer;
+static TextLayer *text_event_location_layer;
 
-Layer *i_battery_layer;
-Layer *p_battery_layer;
-Layer *status_layer;
-Layer *entry_layer;
-Layer *pebble_layer;
+static struct PropertyAnimation* prop_animation_out = NULL;
+static struct PropertyAnimation* clock_animation_out = NULL;
+static struct PropertyAnimation* prop_animation_in = NULL;
+static struct PropertyAnimation* clock_animation_in = NULL;
 
-TextLayer *text_event_title_layer;
-TextLayer *text_event_start_date_layer;
-TextLayer *text_event_location_layer;
+static InverterLayer *full_inverse_layer;
 
-#ifdef INVERSE
-InverterLayer *full_inverse_layer;
-#endif
-
-int g_last_tm_mday_date = -1;
-int g_status_display = 0;
+static int g_last_tm_mday_date = -1;
+static int g_status_display = 0;
 
 // Variables used for text display areas - Pebble hates these to take off and move
-char g_event_title_static[BASIC_SIZE];
-char g_event_start_date_static[BASIC_SIZE];
-char g_location_static[BASIC_SIZE];
-char g_time_text[BASIC_SIZE];
-char g_date_text[BASIC_SIZE];
-uint8_t g_static_state = 0;
-int8_t g_static_level = -1;
-int g_static_entry_no = 0;
+static char g_event_title_static[BASIC_SIZE];
+static char g_event_start_date_static[BASIC_SIZE];
+static char g_location_static[BASIC_SIZE];
+static char g_disp_event_title_static[BASIC_SIZE];
+static char g_disp_event_start_date_static[BASIC_SIZE];
+static char g_disp_location_static[BASIC_SIZE];
+
+static char g_time_text[6];
+static char g_date_text[12];
+static uint8_t g_static_state = 0;
+static int8_t g_static_level = -1;
+static int g_static_entry_no = 0;
+static int g_disp_static_entry_no = 0;
 static uint8_t battery_level;
 static bool battery_plugged;
+static bool first_tick = true;
 
 /*
  * Unload and return what we have taken
  */
-void window_unload(Window *window) {
+static void window_unload(Window *window) {
+
+  layer_destroy(line_layer);
+  layer_destroy(scroll_layer);
+  layer_destroy(i_battery_layer);
+  layer_destroy(p_battery_layer);
+  layer_destroy(status_layer);
+  layer_destroy(entry_layer);
+  layer_destroy(pebble_layer);
+
+  inverter_layer_destroy(full_inverse_layer);
+
+  text_layer_destroy(text_date_layer);
+  text_layer_destroy(text_time_layer);
+  text_layer_destroy(text_event_title_layer);
+  text_layer_destroy(text_event_start_date_layer);
+  text_layer_destroy(text_event_location_layer);
+
+  if (clock_animation_in != NULL) {
+    if (animation_is_scheduled((struct Animation *) clock_animation_in))
+      animation_unschedule((struct Animation *) clock_animation_in);
+    property_animation_destroy(clock_animation_in);
+  }
+
+  if (prop_animation_in != NULL) {
+    if (animation_is_scheduled((struct Animation *) prop_animation_in))
+      animation_unschedule((struct Animation *) prop_animation_in);
+    property_animation_destroy(prop_animation_in);
+  }
+
+  if (clock_animation_out != NULL) {
+    if (animation_is_scheduled((struct Animation *) clock_animation_out))
+      animation_unschedule((struct Animation *) clock_animation_out);
+    property_animation_destroy(clock_animation_out);
+  }
+
+  if (prop_animation_out != NULL) {
+    if (animation_is_scheduled((struct Animation *) prop_animation_out))
+      animation_unschedule((struct Animation *) prop_animation_out);
+    property_animation_destroy(prop_animation_out);
+  }
+
   gbitmap_destroy(icon_phone_battery);
   gbitmap_destroy(icon_phone_battery_charge);
-  gbitmap_destroy(icon_status_1);	
-  gbitmap_destroy(icon_status_2);	
+  gbitmap_destroy(icon_status_1);
+  gbitmap_destroy(icon_status_2);
   gbitmap_destroy(icon_entry_0);
   gbitmap_destroy(icon_entry_1);
   gbitmap_destroy(icon_entry_2);
@@ -97,7 +146,7 @@ void window_unload(Window *window) {
 /*
  * Centre line callback handler
  */
-void line_layer_update_callback(Layer *layer, GContext *ctx) {
+static void line_layer_update_callback(Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_color(ctx, GColorWhite);
 
   graphics_draw_line(ctx, GPoint(0, 87), GPoint(54, 87));
@@ -109,27 +158,30 @@ void line_layer_update_callback(Layer *layer, GContext *ctx) {
 /*
  * Status icon callback handler
  */
-void status_layer_update_callback(Layer *layer, GContext *ctx) {
-  
+static void status_layer_update_callback(Layer *layer, GContext *ctx) {
+
   graphics_context_set_compositing_mode(ctx, GCompOpAssign);
-	
+
   if (g_status_display == STATUS_REQUEST) {
-     graphics_draw_bitmap_in_rect(ctx, icon_status_1, GRect(0, 0, 15, 15));
+    graphics_draw_bitmap_in_rect(ctx, icon_status_1, GRect(0, 0, 15, 15));
   } else if (g_status_display == STATUS_REPLY) {
-     graphics_draw_bitmap_in_rect(ctx, icon_status_2, GRect(0, 0, 15, 15));
+    graphics_draw_bitmap_in_rect(ctx, icon_status_2, GRect(0, 0, 15, 15));
   }
 }
 
+/*
+ * Set the status
+ */
 void set_status(int new_status_display) {
-	g_status_display = new_status_display;
-	layer_mark_dirty(status_layer);
+  g_status_display = new_status_display;
+  layer_mark_dirty(status_layer);
 }
 
 /*
  * iPhone Battery icon callback handler
  */
-void i_battery_layer_update_callback(Layer *layer, GContext *ctx) {
-  
+static void i_battery_layer_update_callback(Layer *layer, GContext *ctx) {
+
   graphics_context_set_compositing_mode(ctx, GCompOpAssign);
 
   if (g_static_state == 1 && g_static_level > 0 && g_static_level <= 100) {
@@ -147,83 +199,132 @@ void i_battery_layer_update_callback(Layer *layer, GContext *ctx) {
  */
 static void p_battery_layer_update_callback(Layer *layer, GContext *ctx) {
 
-	graphics_context_set_compositing_mode(ctx, GCompOpAssign);
-	if (!battery_plugged) {
-		graphics_draw_bitmap_in_rect(ctx, icon_watch_battery, GRect(0, 0, 35, 15));
-		graphics_context_set_stroke_color(ctx, GColorWhite);
-		graphics_context_set_fill_color(ctx, GColorBlack);
-		graphics_fill_rect(ctx, GRect(16, 5, (uint8_t)((battery_level / 100.0) * 11.0), 4), 0, GCornerNone);
-	} else {
-		graphics_draw_bitmap_in_rect(ctx, icon_watch_battery_charge, GRect(0, 0, 35, 15));
-	}
+  graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+  if (!battery_plugged) {
+    graphics_draw_bitmap_in_rect(ctx, icon_watch_battery, GRect(0, 0, 35, 15));
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_fill_rect(ctx, GRect(16, 5, (uint8_t)((battery_level / 100.0) * 11.0), 4), 0, GCornerNone);
+  } else {
+    graphics_draw_bitmap_in_rect(ctx, icon_watch_battery_charge, GRect(0, 0, 35, 15));
+  }
 }
 
 /*
  * Battery state change
  */
 static void battery_state_handler(BatteryChargeState charge) {
-	battery_level = charge.charge_percent;
-	battery_plugged = charge.is_plugged;
-	layer_mark_dirty(p_battery_layer);
+  battery_level = charge.charge_percent;
+  battery_plugged = charge.is_plugged;
+  layer_mark_dirty(p_battery_layer);
 }
 
 /*
  * Set battery display
  */
 void set_battery(uint8_t state, int8_t level) {
-	g_static_state = state;
-    g_static_level = level;	
-	layer_mark_dirty(i_battery_layer);
+  g_static_state = state;
+  g_static_level = level;
+  layer_mark_dirty(i_battery_layer);
 }
 
 /*
  * Calendar entry callback handler
  */
-void entry_layer_update_callback(Layer *layer, GContext *ctx) {
-  	graphics_context_set_compositing_mode(ctx, GCompOpAssign);
-	
-	if (g_static_entry_no == 0)
-    	graphics_draw_bitmap_in_rect(ctx, icon_entry_0, GRect(0, 0, 64, 15));
-	else if (g_static_entry_no == 1)
-    	graphics_draw_bitmap_in_rect(ctx, icon_entry_1, GRect(0, 0, 64, 15));
-	else if (g_static_entry_no == 2)
-    	graphics_draw_bitmap_in_rect(ctx, icon_entry_2, GRect(0, 0, 64, 15));
-	else if (g_static_entry_no == 3)
-    	graphics_draw_bitmap_in_rect(ctx, icon_entry_3, GRect(0, 0, 64, 15));
-	else if (g_static_entry_no == 4)
-    	graphics_draw_bitmap_in_rect(ctx, icon_entry_4, GRect(0, 0, 64, 15));
-	else if (g_static_entry_no == 5)
-    	graphics_draw_bitmap_in_rect(ctx, icon_entry_5, GRect(0, 0, 64, 15));
+static void entry_layer_update_callback(Layer *layer, GContext *ctx) {
+  graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+
+  if (g_disp_static_entry_no == 0)
+    graphics_draw_bitmap_in_rect(ctx, icon_entry_0, GRect(0, 0, 64, 15));
+  else if (g_disp_static_entry_no == 1)
+    graphics_draw_bitmap_in_rect(ctx, icon_entry_1, GRect(0, 0, 64, 15));
+  else if (g_disp_static_entry_no == 2)
+    graphics_draw_bitmap_in_rect(ctx, icon_entry_2, GRect(0, 0, 64, 15));
+  else if (g_disp_static_entry_no == 3)
+    graphics_draw_bitmap_in_rect(ctx, icon_entry_3, GRect(0, 0, 64, 15));
+  else if (g_disp_static_entry_no == 4)
+    graphics_draw_bitmap_in_rect(ctx, icon_entry_4, GRect(0, 0, 64, 15));
+  else if (g_disp_static_entry_no == 5)
+    graphics_draw_bitmap_in_rect(ctx, icon_entry_5, GRect(0, 0, 64, 15));
+}
+
+/**
+ * First phase of event display animation complete
+ */
+static void animation_stopped(Animation *animation, bool finished, void *data) {
+  if (finished) {
+    strncpy(g_disp_event_title_static, g_event_title_static, sizeof(g_disp_event_title_static));
+    strncpy(g_disp_event_start_date_static, g_event_start_date_static, sizeof(g_disp_event_start_date_static));
+    strncpy(g_disp_location_static, g_location_static, sizeof(g_disp_location_static));
+    text_layer_set_text(text_event_title_layer, g_disp_event_title_static);
+    text_layer_set_text(text_event_start_date_layer, g_disp_event_start_date_static);
+    text_layer_set_text(text_event_location_layer, g_disp_location_static);
+    g_disp_static_entry_no = g_static_entry_no;
+    layer_mark_dirty(entry_layer);
+
+    if (prop_animation_in != NULL && animation_is_scheduled((struct Animation *) prop_animation_in)) {
+      animation_unschedule((struct Animation *) prop_animation_in);
+    }
+    if (prop_animation_in == NULL) {
+      GRect to_rect = SCROLL_IN;
+      GRect from_rect = SCROLL_OUT;
+      prop_animation_in = property_animation_create_layer_frame(scroll_layer, &from_rect, &to_rect);
+      animation_set_duration((Animation*) prop_animation_in, 300);
+    }
+    animation_schedule((Animation*) prop_animation_in);
+  }
 }
 
 /*
  * Display update in the event area
  */
 void set_event_display(char *event_title, char *event_start_date, char *location, int num) {
-	strncpy(g_event_title_static, event_title, BASIC_SIZE);
-	strncpy(g_event_start_date_static, event_start_date, BASIC_SIZE);
-	strncpy(g_location_static, location, BASIC_SIZE);
-    text_layer_set_text(text_event_title_layer, g_event_title_static);
-    text_layer_set_text(text_event_start_date_layer, g_event_start_date_static);
-    text_layer_set_text(text_event_location_layer, g_location_static);
-    g_static_entry_no = num;
-    layer_mark_dirty(entry_layer);
+
+  // Already showing nothing and being asked to show nothing again is not
+  // a good reason to animate anything
+  if (g_static_entry_no == num && num == 0) {
+    return;
+  }
+
+  if (prop_animation_out != NULL && animation_is_scheduled((struct Animation *) prop_animation_out)) {
+    animation_unschedule((struct Animation *) prop_animation_out);
+  }
+
+  if (prop_animation_out == NULL) {
+    GRect to_rect = SCROLL_OUT_LEFT;
+    GRect from_rect = SCROLL_IN;
+    prop_animation_out = property_animation_create_layer_frame(scroll_layer, &from_rect, &to_rect);
+    animation_set_duration((Animation*) prop_animation_out, 300);
+    animation_set_curve((Animation*) prop_animation_out, AnimationCurveEaseInOut);
+    animation_set_handlers((Animation*) prop_animation_out, (AnimationHandlers ) { .stopped = (AnimationStoppedHandler) animation_stopped, }, NULL /* callback data */);
+  }
+  animation_schedule((Animation*) prop_animation_out);
+
+  strncpy(g_event_title_static, event_title, sizeof(g_event_title_static));
+  strncpy(g_event_start_date_static, event_start_date, sizeof(g_event_start_date_static));
+  strncpy(g_location_static, location, sizeof(g_location_static));
+  g_static_entry_no = num;
 }
 
 /*
  * Pebble word callback handler
  */
-void pebble_layer_update_callback(Layer *layer, GContext *ctx) {
+static void pebble_layer_update_callback(Layer *layer, GContext *ctx) {
   graphics_context_set_compositing_mode(ctx, GCompOpAssign);
   graphics_draw_bitmap_in_rect(ctx, icon_pebble, GRect(0, 0, 27, 8));
 }
 
-
+/*
+ * Screen inverse setting
+ */
+void set_screen_inverse_setting() {
+  layer_set_hidden(inverter_layer_get_layer(full_inverse_layer), !persist_read_bool(INVERSE_MEMORY));
+}
 
 /*
  * Display initialisation and further setup 
  */
-void window_load(Window *window) {
+static void window_load(Window *window) {
 
   // Resources
   icon_phone_battery = gbitmap_create_with_resource(RESOURCE_ID_PHONE_BATTERY_ICON);
@@ -241,46 +342,49 @@ void window_load(Window *window) {
   icon_watch_battery_charge = gbitmap_create_with_resource(RESOURCE_ID_WATCH_BATTERY_CHARGE_ICON);
 
   // Date
-  text_date_layer =	text_layer_create(GRect(0, 94, 143, 168-94));
+  text_date_layer = text_layer_create(GRect(0, 94, 143, 168-94));
   text_layer_set_text_color(text_date_layer, GColorWhite);
   text_layer_set_background_color(text_date_layer, GColorClear);
   text_layer_set_font(text_date_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
   text_layer_set_text_alignment(text_date_layer, GTextAlignmentCenter);
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_date_layer));
 
-  // Time 
-  text_time_layer = text_layer_create(GRect(0, 112, 143, 168-112));
+  // Time
+  text_time_layer = text_layer_create(CLOCK_IN);
   text_layer_set_text_color(text_time_layer, GColorWhite);
   text_layer_set_background_color(text_time_layer, GColorClear);
   text_layer_set_font(text_time_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_BOLD_SUBSET_49)));
-  text_layer_set_text_alignment	(text_time_layer,GTextAlignmentCenter);
+  text_layer_set_text_alignment(text_time_layer, GTextAlignmentCenter);
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_time_layer));
 
   // Line
   line_layer = layer_create(GRect(0,0,144,168));
   layer_set_update_proc(line_layer, line_layer_update_callback);
   layer_add_child(window_get_root_layer(window), line_layer);
- 
-  // Event title
-  text_event_title_layer = text_layer_create(GRect(1, 16, 144 - 1, 21));
-  text_layer_set_text_color(text_event_title_layer, GColorWhite);
-  text_layer_set_background_color(text_event_title_layer, GColorClear);
-  text_layer_set_font(text_event_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));  
-  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_event_title_layer));
 
-  // Date 
-  text_event_start_date_layer = text_layer_create(GRect(1, 36, 144 - 1, 21));
-  text_layer_set_text_color(text_event_start_date_layer, GColorWhite);
-  text_layer_set_background_color(text_event_start_date_layer, GColorClear);
-  text_layer_set_font(text_event_start_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_event_start_date_layer));
+  scroll_layer = layer_create(SCROLL_IN);
+  layer_add_child(window_get_root_layer(window), scroll_layer);
 
   // Location
-  text_event_location_layer = text_layer_create(GRect(1, 54, 144 - 1, 21));
+  text_event_location_layer = text_layer_create(GRect(1, 54-16, 144 - 1, 27));
   text_layer_set_text_color(text_event_location_layer, GColorWhite);
   text_layer_set_background_color(text_event_location_layer, GColorClear);
   text_layer_set_font(text_event_location_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
-  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_event_location_layer));
+  layer_add_child(scroll_layer, text_layer_get_layer(text_event_location_layer));
+
+  // Date
+  text_event_start_date_layer = text_layer_create(GRect(1, 36-16, 144 - 1, 27));
+  text_layer_set_text_color(text_event_start_date_layer, GColorWhite);
+  text_layer_set_background_color(text_event_start_date_layer, GColorClear);
+  text_layer_set_font(text_event_start_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+  layer_add_child(scroll_layer, text_layer_get_layer(text_event_start_date_layer));
+
+  // Event title
+  text_event_title_layer = text_layer_create(GRect(1, 0, 144 - 1, 27));
+  text_layer_set_text_color(text_event_title_layer, GColorWhite);
+  text_layer_set_background_color(text_event_title_layer, GColorClear);
+  text_layer_set_font(text_event_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  layer_add_child(scroll_layer, text_layer_get_layer(text_event_title_layer));
 
   // iPhone Battery
   g_static_state = 1;
@@ -288,7 +392,7 @@ void window_load(Window *window) {
   i_battery_layer = layer_create(GRect(79,0,30,15));
   layer_set_update_proc(i_battery_layer, i_battery_layer_update_callback);
   layer_add_child(window_get_root_layer(window), i_battery_layer);
-	
+
   // Pebble Battery
   BatteryChargeState initial = battery_state_service_peek();
   battery_level = initial.charge_percent;
@@ -297,68 +401,110 @@ void window_load(Window *window) {
   layer_set_update_proc(p_battery_layer, p_battery_layer_update_callback);
   layer_add_child(window_get_root_layer(window), p_battery_layer);
 
-  // Status 	
+  // Status
   status_layer = layer_create(GRect(64,0,15,15));
   layer_set_update_proc(status_layer, status_layer_update_callback);
   layer_add_child(window_get_root_layer(window), status_layer);
 
-  // Calendar entry indicator	
+  // Calendar entry indicator
   entry_layer = layer_create(GRect(0,0,64,15));
   layer_set_update_proc(entry_layer, entry_layer_update_callback);
   layer_add_child(window_get_root_layer(window), entry_layer);
-	
+
   // Pebble word
   pebble_layer = layer_create(GRect(58,83,27,8));
   layer_set_update_proc(pebble_layer, pebble_layer_update_callback);
   layer_add_child(window_get_root_layer(window), pebble_layer);
-	
-  // Put everything in an initial state
-  set_battery(1,50);
-  set_status(STATUS_REQUEST);
-  set_event_display("", "", "", 0);
-	
-  // Make sure the timers start but don't all go off together
-  calendar_init();
-	
+
   // Configurable inverse
-  #ifdef INVERSE
   full_inverse_layer = inverter_layer_create(GRect(0, 0, 144, 168));
   layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(full_inverse_layer));
-  #endif
+  set_screen_inverse_setting();
+
+  // Put everything in an initial state
+  set_battery(1, 50);
+  set_status(STATUS_REQUEST);
+  set_event_display("", "", "", 0);
+
+  // Make sure the timers start but don't all go off together
+  calendar_init();
 }
 
 /*
- * Clock tick
+ * End of first phase of time animation - out of view so update time
  */
-void handle_second_tick(struct tm *tick_time, TimeUnits units_changed) {
-
-	second_timer();
-
-	if (tick_time->tm_sec == 0)
-		return;
-
-    // Only update the date when it's changed.
-	if (tick_time->tm_mday != g_last_tm_mday_date) {
-		g_last_tm_mday_date = tick_time->tm_mday;
-        strftime(g_date_text, BASIC_SIZE, "%a, %b %e", tick_time);
-        text_layer_set_text(text_date_layer, g_date_text);
-	}
-
-    strftime(g_time_text, BASIC_SIZE, "%R", tick_time);
-
+static void clock_animation_stopped(Animation *animation, bool finished, void *data) {
+  if (finished) {
+    clock_copy_time_string(g_time_text, sizeof(g_time_text));
+    if (g_time_text[4] == ' ')
+      g_time_text[4] = '\0';
     text_layer_set_text(text_time_layer, g_time_text);
-	
-	minute_timer(tick_time->tm_min);
+
+    if (clock_animation_in != NULL && animation_is_scheduled((struct Animation *) clock_animation_in)) {
+      animation_unschedule((struct Animation *) clock_animation_in);
+    }
+
+    if (clock_animation_in == NULL) {
+      GRect to_rect = CLOCK_IN;
+      GRect from_rect = CLOCK_OUT;
+      clock_animation_in = property_animation_create_layer_frame(text_layer_get_layer(text_time_layer), &from_rect, &to_rect);
+      animation_set_duration((Animation*) clock_animation_in, 400);
+    }
+    animation_schedule((Animation*) clock_animation_in);
+  }
 }
 
+/*
+ * Display update in the event area
+ */
+static void update_clock() {
+
+  if (clock_animation_out != NULL && animation_is_scheduled((struct Animation *) clock_animation_out)) {
+    animation_unschedule((struct Animation *) clock_animation_out);
+  }
+
+  if (clock_animation_out == NULL) {
+    GRect to_rect = CLOCK_OUT;
+    GRect from_rect = CLOCK_IN;
+    clock_animation_out = property_animation_create_layer_frame(text_layer_get_layer(text_time_layer), &from_rect, &to_rect);
+    animation_set_duration((Animation*) clock_animation_out, 400);
+    animation_set_curve((Animation*) clock_animation_out, AnimationCurveEaseInOut);
+    animation_set_handlers((Animation*) clock_animation_out, (AnimationHandlers ) { .stopped = (AnimationStoppedHandler) clock_animation_stopped, }, NULL /* callback data */);
+  }
+  animation_schedule((Animation*) clock_animation_out);
+}
+/*
+ * Clock tick
+ */
+static void handle_second_tick(struct tm *tick_time, TimeUnits units_changed) {
+
+  second_timer();
+
+  if (tick_time->tm_sec != 0 && !first_tick)
+    return;
+
+  first_tick = false;
+
+  // Only update the date when it's changed.
+  if (tick_time->tm_mday != g_last_tm_mday_date) {
+    g_last_tm_mday_date = tick_time->tm_mday;
+    strftime(g_date_text, sizeof(g_date_text), "%a, %b %e", tick_time);
+    text_layer_set_text(text_date_layer, g_date_text);
+  }
+
+  update_clock();
+
+  minute_timer(tick_time->tm_min);
+}
+
+/*
+ * Set everything up
+ */
 static void init(void) {
   window = window_create();
   window_set_background_color(window, GColorBlack);
   window_set_fullscreen(window, true);
-  window_set_window_handlers(window, (WindowHandlers) {
-    .load = window_load,
-    .unload = window_unload
-  });
+  window_set_window_handlers(window, (WindowHandlers ) { .load = window_load, .unload = window_unload });
 
   const int inbound_size = app_message_inbox_size_maximum();
   const int outbound_size = app_message_outbox_size_maximum();
@@ -370,24 +516,32 @@ static void init(void) {
   tick_timer_service_subscribe(SECOND_UNIT, &handle_second_tick);
 
   app_message_register_inbox_received(received_message);
-	
+  app_message_register_outbox_failed(out_failed_handler);
+
   // Accelerometer
-  accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
   accel_data_service_subscribe(10, &accel_data_handler);
-	
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
+
   battery_state_service_subscribe(battery_state_handler);
 
 }
 
+/*
+ * Close final stuff down
+ */
 static void deinit() {
-	tick_timer_service_unsubscribe();
-	app_message_deregister_callbacks();
-	accel_data_service_unsubscribe();
+  tick_timer_service_unsubscribe();
+  app_message_deregister_callbacks();
+  accel_data_service_unsubscribe();
+  battery_state_service_unsubscribe();
 }
 
+/*
+ * Mainness has been restored
+ */
 int main(void) {
- init();
- app_event_loop();
- deinit();
+  init();
+  app_event_loop();
+  deinit();
 }
 

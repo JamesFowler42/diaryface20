@@ -26,7 +26,7 @@
 #define common_h
 
 #include "pebble.h"
-	
+
 //#define INVERSE
 
 #define RECONNECT_KEY 0
@@ -35,25 +35,23 @@
 #define CALENDAR_RESPONSE_KEY 3
 #define REQUEST_BATTERY_KEY 8
 #define BATTERY_RESPONSE_KEY 9
-	
-#define ROTATE_EVENT 203
 
 #define CLOCK_STYLE_12H 1
 #define CLOCK_STYLE_24H 2
-	
+
 #define MAX_EVENTS 15
 #define ROT_MAX 5
-	
+
 #define STATUS_REQUEST 1
 #define STATUS_REPLY 2
-#define STATUS_ALERT_SET 3
-	
+
 #define BASIC_SIZE 21
 #define START_DATE_SIZE 18
 #define CLOSE_DATE_SIZE 6
 #define CLOSE_DAY_NAME_SIZE 10
 
-	
+#define INVERSE_MEMORY 12434
+
 typedef struct {
   uint8_t index;
   char title[BASIC_SIZE];
@@ -71,22 +69,31 @@ typedef struct {
 
 typedef struct {
   char date[CLOSE_DATE_SIZE];
-  char dayName[CLOSE_DAY_NAME_SIZE];
+  char day_name[CLOSE_DAY_NAME_SIZE];
 } CloseDay;
 
-#define MIN_SECOND_PER_ROTATE 3
+#define MIN_SECOND_PER_ROTATE 4
+#define MID_SECOND_PER_ROTATE 10
 #define MAX_SECOND_PER_ROTATE 30
-	
+
 #define TODAY "Today"
 #define TOMORROW "Tomorrow"
 #define ALL_DAY "All day"
-	
+
+#define SCROLL_IN GRect(0,16,144,75)
+#define SCROLL_OUT GRect(143,16,144,75)
+#define SCROLL_OUT_LEFT GRect(-144,16,144,74)
+
+#define CLOCK_IN GRect(0, 112, 143, 168-112)
+#define CLOCK_OUT GRect(0, 168, 143, 168-112)
+
 void time_plus_day(struct tm *time, int daysToAdvance);
 bool is_overnight();
 void calendar_init();
 void handle_calendar_timer(void *data);
 void draw_date();
 void received_message(DictionaryIterator *received, void *context);
+void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, void *context);
 void set_status(int new_status_display);
 void set_event_display(char *event_title, char *event_start_date, char *location, int num);
 void set_battery(uint8_t state, int8_t level);
@@ -95,5 +102,6 @@ void minute_timer(int tm_min);
 int a_to_i(char *val, int len);
 bool is_date_today(char *date);
 void accel_data_handler(AccelData *data, uint32_t num_samples);
+void set_screen_inverse_setting();
 
 #endif
