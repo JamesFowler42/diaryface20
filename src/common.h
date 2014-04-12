@@ -35,6 +35,14 @@
 #define CALENDAR_RESPONSE_KEY 3
 #define REQUEST_BATTERY_KEY 8
 #define BATTERY_RESPONSE_KEY 9
+#define REQUEST_SETTINGS_KEY 27
+#define SETTINGS_RESPONSE_KEY 28
+
+#define SETTINGS_KEY_INVERSE 200
+#define SETTINGS_KEY_ANIMATE 201
+#define SETTINGS_KEY_DAY_NAME 202
+#define SETTINGS_KEY_MONTH_NAME 203
+#define SETTINGS_KEY_WEEK_NO 204
 
 #define CLOCK_STYLE_12H 1
 #define CLOCK_STYLE_24H 2
@@ -50,7 +58,16 @@
 #define CLOSE_DATE_SIZE 6
 #define CLOSE_DAY_NAME_SIZE 10
 
-#define INVERSE_MEMORY 12434
+#define PERSIST_CONFIG_KEY 12434
+#define PERSIST_CONFIG_MS 500
+
+typedef struct {
+  bool invert;
+  bool animate;
+  bool day_name;
+  bool month_name;
+  bool week_no;
+} ConfigData;
 
 typedef struct {
   uint8_t index;
@@ -103,5 +120,9 @@ int a_to_i(char *val, int len);
 bool is_date_today(char *date);
 void accel_data_handler(AccelData *data, uint32_t num_samples);
 void set_screen_inverse_setting();
+void save_config_data(void *data);
+void read_config_data();
+ConfigData *get_config_data();
+void date_update();
 
 #endif

@@ -74,7 +74,7 @@ static char g_disp_event_start_date_static[BASIC_SIZE];
 static char g_disp_location_static[BASIC_SIZE];
 
 static char g_time_text[6];
-static char g_date_text[12];
+static char g_date_text[17];
 static uint8_t g_static_state = 0;
 static int8_t g_static_level = -1;
 static int g_static_entry_no = 0;
@@ -248,19 +248,23 @@ static void entry_layer_update_callback(Layer *layer, GContext *ctx) {
     graphics_draw_bitmap_in_rect(ctx, icon_entry_5, GRect(0, 0, 64, 15));
 }
 
+static void update_event_display() {
+  strncpy(g_disp_event_title_static, g_event_title_static, sizeof(g_disp_event_title_static));
+  strncpy(g_disp_event_start_date_static, g_event_start_date_static, sizeof(g_disp_event_start_date_static));
+  strncpy(g_disp_location_static, g_location_static, sizeof(g_disp_location_static));
+  text_layer_set_text(text_event_title_layer, g_disp_event_title_static);
+  text_layer_set_text(text_event_start_date_layer, g_disp_event_start_date_static);
+  text_layer_set_text(text_event_location_layer, g_disp_location_static);
+  g_disp_static_entry_no = g_static_entry_no;
+  layer_mark_dirty(entry_layer);
+}
+
 /**
  * First phase of event display animation complete
  */
 static void animation_stopped(Animation *animation, bool finished, void *data) {
   if (finished) {
-    strncpy(g_disp_event_title_static, g_event_title_static, sizeof(g_disp_event_title_static));
-    strncpy(g_disp_event_start_date_static, g_event_start_date_static, sizeof(g_disp_event_start_date_static));
-    strncpy(g_disp_location_static, g_location_static, sizeof(g_disp_location_static));
-    text_layer_set_text(text_event_title_layer, g_disp_event_title_static);
-    text_layer_set_text(text_event_start_date_layer, g_disp_event_start_date_static);
-    text_layer_set_text(text_event_location_layer, g_disp_location_static);
-    g_disp_static_entry_no = g_static_entry_no;
-    layer_mark_dirty(entry_layer);
+    update_event_display();
 
     if (prop_animation_in != NULL && animation_is_scheduled((struct Animation *) prop_animation_in)) {
       animation_unschedule((struct Animation *) prop_animation_in);
@@ -286,6 +290,16 @@ void set_event_display(char *event_title, char *event_start_date, char *location
     return;
   }
 
+  strncpy(g_event_title_static, event_title, sizeof(g_event_title_static));
+  strncpy(g_event_start_date_static, event_start_date, sizeof(g_event_start_date_static));
+  strncpy(g_location_static, location, sizeof(g_location_static));
+  g_static_entry_no = num;
+
+  if (!get_config_data()->animate) {
+    update_event_display();
+    return;
+  }
+
   if (prop_animation_out != NULL && animation_is_scheduled((struct Animation *) prop_animation_out)) {
     animation_unschedule((struct Animation *) prop_animation_out);
   }
@@ -299,11 +313,6 @@ void set_event_display(char *event_title, char *event_start_date, char *location
     animation_set_handlers((Animation*) prop_animation_out, (AnimationHandlers ) { .stopped = (AnimationStoppedHandler) animation_stopped, }, NULL /* callback data */);
   }
   animation_schedule((Animation*) prop_animation_out);
-
-  strncpy(g_event_title_static, event_title, sizeof(g_event_title_static));
-  strncpy(g_event_start_date_static, event_start_date, sizeof(g_event_start_date_static));
-  strncpy(g_location_static, location, sizeof(g_location_static));
-  g_static_entry_no = num;
 }
 
 /*
@@ -318,7 +327,7 @@ static void pebble_layer_update_callback(Layer *layer, GContext *ctx) {
  * Screen inverse setting
  */
 void set_screen_inverse_setting() {
-  layer_set_hidden(inverter_layer_get_layer(full_inverse_layer), !persist_read_bool(INVERSE_MEMORY));
+  layer_set_hidden(inverter_layer_get_layer(full_inverse_layer), !get_config_data()->invert);
 }
 
 /*
@@ -430,15 +439,19 @@ static void window_load(Window *window) {
   calendar_init();
 }
 
+static void update_clock_display() {
+  clock_copy_time_string(g_time_text, sizeof(g_time_text));
+  if (g_time_text[4] == ' ')
+    g_time_text[4] = '\0';
+  text_layer_set_text(text_time_layer, g_time_text);
+}
+
 /*
  * End of first phase of time animation - out of view so update time
  */
 static void clock_animation_stopped(Animation *animation, bool finished, void *data) {
   if (finished) {
-    clock_copy_time_string(g_time_text, sizeof(g_time_text));
-    if (g_time_text[4] == ' ')
-      g_time_text[4] = '\0';
-    text_layer_set_text(text_time_layer, g_time_text);
+    update_clock_display();
 
     if (clock_animation_in != NULL && animation_is_scheduled((struct Animation *) clock_animation_in)) {
       animation_unschedule((struct Animation *) clock_animation_in);
@@ -459,6 +472,11 @@ static void clock_animation_stopped(Animation *animation, bool finished, void *d
  */
 static void update_clock() {
 
+  if (!get_config_data()->animate) {
+    update_clock_display();
+    return;
+  }
+
   if (clock_animation_out != NULL && animation_is_scheduled((struct Animation *) clock_animation_out)) {
     animation_unschedule((struct Animation *) clock_animation_out);
   }
@@ -473,6 +491,37 @@ static void update_clock() {
   }
   animation_schedule((Animation*) clock_animation_out);
 }
+
+/*
+ * Date according to various formats
+ */
+void date_update() {
+  time_t time_now = time(NULL);
+  struct tm *tick_time = localtime(&time_now);
+
+  char date_format[20];
+  if (get_config_data()->day_name) {
+    if (get_config_data()->month_name) {
+      strncpy(date_format, "%a, %b %e", sizeof(date_format));
+    } else {
+      strncpy(date_format, "%A %e", sizeof(date_format));
+    }
+  } else {
+    if (get_config_data()->month_name) {
+      strncpy(date_format, "%B %e", sizeof(date_format));
+    } else {
+      strncpy(date_format, "%e", sizeof(date_format));
+    }
+  }
+  if (get_config_data()->week_no) {
+    strncat(date_format, " (%W)", sizeof(date_format));
+  }
+
+  strftime(g_date_text, sizeof(g_date_text), date_format, tick_time);
+  text_layer_set_text(text_date_layer, g_date_text);
+
+}
+
 /*
  * Clock tick
  */
@@ -488,8 +537,7 @@ static void handle_second_tick(struct tm *tick_time, TimeUnits units_changed) {
   // Only update the date when it's changed.
   if (tick_time->tm_mday != g_last_tm_mday_date) {
     g_last_tm_mday_date = tick_time->tm_mday;
-    strftime(g_date_text, sizeof(g_date_text), "%a, %b %e", tick_time);
-    text_layer_set_text(text_date_layer, g_date_text);
+    date_update();
   }
 
   update_clock();
@@ -501,6 +549,9 @@ static void handle_second_tick(struct tm *tick_time, TimeUnits units_changed) {
  * Set everything up
  */
 static void init(void) {
+
+  read_config_data();
+
   window = window_create();
   window_set_background_color(window, GColorBlack);
   window_set_fullscreen(window, true);
@@ -530,6 +581,7 @@ static void init(void) {
  * Close final stuff down
  */
 static void deinit() {
+  save_config_data(NULL);
   tick_timer_service_unsubscribe();
   app_message_deregister_callbacks();
   accel_data_service_unsubscribe();

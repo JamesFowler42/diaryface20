@@ -44,6 +44,66 @@ static uint8_t rotate_change = MID_SECOND_PER_ROTATE;
 static bool calendar_refresh_queued = false;
 static bool initial_state = true;
 
+static ConfigData config_data;
+bool save_config_requested = false;
+
+/*
+ * Save the config data structure
+ */
+void save_config_data(void *data) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "save_config_data (%d)",  sizeof(config_data));
+  int written = persist_write_data(PERSIST_CONFIG_KEY, &config_data, sizeof(config_data));
+  if (written != sizeof(config_data)) {
+    APP_LOG(APP_LOG_LEVEL_ERROR, "save_config_data error (%d)", written);
+  }
+  save_config_requested = false;
+}
+
+/*
+ * Clear config if needed
+ */
+static void clear_config_data() {
+  memset(&config_data, 0, sizeof(config_data));
+  config_data.animate = true;
+  config_data.day_name = true;
+  config_data.invert = false;
+  config_data.month_name = true;
+  config_data.week_no = true;
+}
+
+/*
+ * Read the config data (or create it if missing)
+ */
+void read_config_data() {
+  if (persist_exists(PERSIST_CONFIG_KEY)) {
+    int read = persist_read_data(PERSIST_CONFIG_KEY, &config_data, sizeof(config_data));
+    if (read != sizeof(config_data)) {
+      APP_LOG(APP_LOG_LEVEL_ERROR, "read_config_data wrong size (%d)", read);
+      clear_config_data();
+    }
+  } else {
+    clear_config_data();
+  }
+}
+
+/*
+ * Provide config data structure to other units
+ */
+ConfigData *get_config_data() {
+  return &config_data;
+}
+
+/*
+ * Remember the configuration settings from the javascript
+ */
+static void request_persist_config() {
+  if (!save_config_requested) {
+    app_timer_register(PERSIST_CONFIG_MS, save_config_data, NULL);
+    save_config_requested = true;
+  }
+}
+
+
 /*
  * Make a calendar request
  */
@@ -79,6 +139,24 @@ static void battery_request() {
     return;
 
   dict_write_uint8(iter, REQUEST_BATTERY_KEY, 1);
+  dict_write_end(iter);
+  app_message_outbox_send();
+}
+
+/*
+ * Make a config status request
+ */
+static void config_request() {
+
+  if (!bluetooth_connection_service_peek())
+    return;
+
+  DictionaryIterator *iter;
+  app_message_outbox_begin(&iter);
+  if (!iter)
+    return;
+
+  dict_write_uint8(iter, REQUEST_SETTINGS_KEY, 1);
   dict_write_end(iter);
   app_message_outbox_send();
 }
@@ -229,7 +307,6 @@ void received_message(DictionaryIterator *received, void *context) {
 
   Tuple *tuple = dict_find(received, RECONNECT_KEY);
   if (tuple) {
-    vibes_short_pulse();
     calendar_request();
   }
 
@@ -272,6 +349,51 @@ void received_message(DictionaryIterator *received, void *context) {
   if (tuple) {
     memcpy(&g_battery_status, &tuple->value->data[0], sizeof(BatteryStatus));
     set_battery(g_battery_status.state, g_battery_status.level);
+    config_request();
+  }
+
+  tuple = dict_find(received, SETTINGS_RESPONSE_KEY);
+
+  if (tuple) {
+    // read specified keys
+    tuple = dict_find(received, SETTINGS_KEY_INVERSE);
+
+    if (tuple) { // be prepared to get null
+      config_data.invert = tuple->value->uint8 != 0;
+      request_persist_config();
+      set_screen_inverse_setting();
+    }
+
+    tuple = dict_find(received, SETTINGS_KEY_ANIMATE);
+
+    if (tuple) { // be prepared to get null
+      config_data.animate = tuple->value->uint8 != 0;
+      request_persist_config();
+    }
+
+    tuple = dict_find(received, SETTINGS_KEY_DAY_NAME);
+
+    if (tuple) { // be prepared to get null
+      config_data.day_name = tuple->value->uint8 != 0;
+      request_persist_config();
+      date_update();
+    }
+
+    tuple = dict_find(received, SETTINGS_KEY_MONTH_NAME);
+
+    if (tuple) { // be prepared to get null
+      config_data.month_name = tuple->value->uint8 != 0;
+      request_persist_config();
+      date_update();
+    }
+
+    tuple = dict_find(received, SETTINGS_KEY_WEEK_NO);
+
+    if (tuple) { // be prepared to get null
+      config_data.week_no = tuple->value->uint8 != 0;
+      request_persist_config();
+      date_update();
+    }
   }
 
 }
@@ -380,12 +502,6 @@ void accel_data_handler(AccelData *data, uint32_t num_samples) {
   // Waggle wrist and we start rotating events faster
   if (biggest >= 200) {
     rotate_change = MIN_SECOND_PER_ROTATE;
-  }
-
-  // Big hit changes display to inverse or back
-  if (biggest >= 3000) {
-    persist_write_bool(INVERSE_MEMORY, !persist_read_bool(INVERSE_MEMORY));
-    set_screen_inverse_setting();
   }
 
 }

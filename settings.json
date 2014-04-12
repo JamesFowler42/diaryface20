@@ -1,0 +1,33 @@
+[
+  {
+    "key": 200,
+    "type": 0,
+    "title": "Inverse?",
+    "default": false
+  },
+  {
+    "key": 201,
+    "type": 0,
+    "title": "Animate?",
+    "default": true
+  },
+  {
+    "key": 202,
+    "type": 0,
+    "title": "Day name?",
+    "default": true
+  },
+  {
+    "key": 203,
+    "type": 0,
+    "title": "Month name?",
+    "default": true
+  },
+  {
+    "key": 204,
+    "type": 0,
+    "title": "Week No?",
+    "default": false
+  }
+]
+
