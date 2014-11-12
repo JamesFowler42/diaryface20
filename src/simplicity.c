@@ -514,7 +514,11 @@ void date_update() {
     }
   }
   if (get_config_data()->week_no) {
-    strncat(date_format, " (%W)", sizeof(date_format));
+    char temp[7];
+    strftime(temp, sizeof(temp), "%W", tick_time);
+    int week = a_to_i(temp, 2) + 1;
+    snprintf(temp, sizeof(temp), " (%d)", week);
+    strncat(date_format, temp, sizeof(date_format));
   }
 
   strftime(g_date_text, sizeof(g_date_text), date_format, tick_time);

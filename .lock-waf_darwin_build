@@ -1,0 +1,8 @@
+argv = ['/Users/keith/pebble-dev/PebbleSDK-2.7/Pebble/waf', 'configure', 'build']
+environ = {'SSH_AUTH_SOCK': '/tmp/launch-SvQBHA/Listeners', 'VERSIONER_PYTHON_PREFER_32_BIT': 'no', 'SHELL': '/bin/bash', 'LOGNAME': 'keith', 'USER': 'keith', 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin:/Users/keith/pebble-dev/PebbleSDK-2.7/arm-cs-tools/bin', 'HOME': '/Users/keith', 'TMPDIR': '/var/folders/gc/k5ggvx353c33280cq9nmppn00000gr/T/', 'APP_ICON_63104': '../Resources/Eclipse.icns', 'Apple_PubSub_Socket_Render': '/tmp/launch-Sz7nWZ/Render', 'VERSIONER_PYTHON_VERSION': '2.7', 'SHLVL': '1', '__CF_USER_TEXT_ENCODING': '0x1F8:0:0', 'PWD': '/Users/keith/diaryface20', '_': '/Users/keith/pebble-dev/PebbleSDK-2.7/Pebble/waf', 'JAVA_STARTED_ON_FIRST_THREAD_63104': '1', '__CHECKFIX1436934': '1'}
+files = ['/Users/keith/diaryface20/wscript']
+hash = 6045265195391904172
+options = {'files': '', 'jobs': 2, 'verbose': 0, 'nocache': False, 'progress_bar': 0, 'timestamp': None, 'distcheck_args': None, 'top': '', 'destdir': '', 'keep': 0, 'zones': '', 'debug': False, 'prefix': '/usr/local/', 'download': False, 'force': False, 'targets': '', 'out': ''}
+out_dir = '/Users/keith/diaryface20/build'
+run_dir = '/Users/keith/diaryface20'
+top_dir = '/Users/keith/diaryface20'
