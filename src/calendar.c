@@ -260,8 +260,6 @@ static void map_if_data_to_internal(EventInternal *rot, EVENT_TYPE *iface) {
   rot->has_location = iface->has_location;
   strncpy(rot->location, iface->location, member_size(EVENT_TYPE,location));
   rot->all_day = iface->all_day;
-  rot->alarms[0] = iface->alarms[0];
-  rot->alarms[1] = iface->alarms[1];
   #ifdef PBL_COLOR
     if (iface->calendar_has_color) {
       rot->color = GColorFromRGB(iface->calendar_color[0],iface->calendar_color[1],iface->calendar_color[2] );
@@ -272,9 +270,9 @@ static void map_if_data_to_internal(EventInternal *rot, EVENT_TYPE *iface) {
   struct tm *start_date_tm = localtime(&(iface->start_date));  
   // MM/dd(/yy) H:mm
   if (clock_is_24h_style()) {
-    strftime(rot->start_date, START_DATE_SIZE, "%m/%d/%y %H:%M", start_date_tm); 
+    strftime(rot->start_date, member_size(EventInternal, start_date), "%m/%d/%y %H:%M", start_date_tm); 
   } else {
-    strftime(rot->start_date, START_DATE_SIZE, "%m/%d/%y %l:%M %P", start_date_tm); 
+    strftime(rot->start_date, member_size(EventInternal, start_date), "%m/%d/%y %l:%M %P", start_date_tm); 
   }
 }
 
@@ -282,7 +280,7 @@ static void map_if_data_to_internal(EventInternal *rot, EVENT_TYPE *iface) {
  * Prepare events for rotation display
  */
 static void process_rot_events() {
-  char event_date[BASIC_SIZE];
+  char event_date[member_size(EventInternal, start_date)];
   if (g_max_entries == 0)
     return;
   for (uint8_t i = 0; i < ROT_MAX; i++) {

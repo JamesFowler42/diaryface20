@@ -49,9 +49,11 @@ static Layer *status_layer;
 static Layer *entry_layer;
 static Layer *pebble_layer;
 static Layer *bullet_layer;
+static Layer *time_layer;
 
 static TextLayer *text_date_layer;
 static TextLayer *text_time_layer;
+static TextLayer *text_time_layer2;
 static TextLayer *text_event_title_layer;
 static TextLayer *text_event_start_date_layer;
 static TextLayer *text_event_location_layer;
@@ -69,12 +71,12 @@ static int g_last_tm_mday_date = -1;
 static int g_status_display = 0;
 
 // Variables used for text display areas - Pebble hates these to take off and move
-static char g_event_title_static[BASIC_SIZE];
-static char g_event_start_date_static[BASIC_SIZE];
-static char g_location_static[BASIC_SIZE];
-static char g_disp_event_title_static[BASIC_SIZE];
-static char g_disp_event_start_date_static[BASIC_SIZE];
-static char g_disp_location_static[BASIC_SIZE];
+static char g_event_title_static[member_size(EVENT_TYPE, title)];
+static char g_event_start_date_static[member_size(EventInternal, start_date)];
+static char g_location_static[member_size(EVENT_TYPE, location)];
+static char g_disp_event_title_static[member_size(EVENT_TYPE, title)];
+static char g_disp_event_start_date_static[member_size(EventInternal, start_date)];
+static char g_disp_location_static[member_size(EVENT_TYPE, location)];
 
 static char g_time_text[6];
 static char g_date_text[17];
@@ -100,7 +102,10 @@ static void window_unload(Window *window) {
   layer_destroy(status_layer);
   layer_destroy(entry_layer);
   layer_destroy(pebble_layer);
-  layer_destroy(bullet_layer);
+  #ifdef PBL_COLOR
+    layer_destroy(bullet_layer);
+  #endif
+  layer_destroy(time_layer);
 
   #ifndef PBL_COLOR
     inverter_layer_destroy(full_inverse_layer);
@@ -108,6 +113,9 @@ static void window_unload(Window *window) {
 
   text_layer_destroy(text_date_layer);
   text_layer_destroy(text_time_layer);
+  #ifdef PBL_COLOR
+    text_layer_destroy(text_time_layer2);
+  #endif
   text_layer_destroy(text_event_title_layer);
   text_layer_destroy(text_event_start_date_layer);
   text_layer_destroy(text_event_location_layer);
@@ -197,7 +205,7 @@ static void i_battery_layer_update_callback(Layer *layer, GContext *ctx) {
     graphics_draw_bitmap_in_rect(ctx, icon_phone_battery, GRect(0, 0, 30, 15));
     graphics_context_set_stroke_color(ctx, BATTERY_STROKE);
     graphics_context_set_fill_color(ctx, BATTERY_FILL);
-    graphics_fill_rect(ctx, GRect(14, 5, (uint8_t)((g_static_level / 100.0) * 11.0), 4), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(14, 5, g_static_level / 9, 4), 0, GCornerNone);
   } else if (g_static_state == 2 || g_static_state == 3) {
     graphics_draw_bitmap_in_rect(ctx, icon_phone_battery_charge, GRect(0, 0, 30, 15));
   }
@@ -213,7 +221,7 @@ static void p_battery_layer_update_callback(Layer *layer, GContext *ctx) {
     graphics_draw_bitmap_in_rect(ctx, icon_watch_battery, GRect(0, 0, 35, 15));
     graphics_context_set_stroke_color(ctx, BATTERY_STROKE);
     graphics_context_set_fill_color(ctx, BATTERY_FILL);
-    graphics_fill_rect(ctx, GRect(16, 5, (uint8_t)((battery_level / 100.0) * 11.0), 4), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(16, 5, battery_level / 9, 4), 0, GCornerNone);
   } else {
     graphics_draw_bitmap_in_rect(ctx, icon_watch_battery_charge, GRect(0, 0, 35, 15));
   }
@@ -261,9 +269,9 @@ static void entry_layer_update_callback(Layer *layer, GContext *ctx) {
  * Bullet callback handler
  */
 static void bullet_layer_update_callback(Layer *layer, GContext *ctx) {
-  graphics_context_set_compositing_mode(ctx, GCompOpSet);
+  graphics_context_set_compositing_mode(ctx, GCompOpAssign);
   graphics_context_set_text_color(ctx, g_disp_static_color);
-  graphics_draw_text(ctx, "•", fonts_get_system_font(FONT_KEY_GOTHIC_14), GRect(0, 0, 12, 20), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+  graphics_draw_text(ctx, "•", fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(0, 0, 12, 20), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 }
 
 static void update_event_display() {
@@ -387,14 +395,27 @@ static void window_load(Window *window) {
   text_layer_set_font(text_date_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
   text_layer_set_text_alignment(text_date_layer, GTextAlignmentCenter);
   layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_date_layer));
+  
+  time_layer = layer_create(CLOCK_IN);
+  layer_add_child(window_get_root_layer(window), time_layer);
+
+  #ifdef PBL_COLOR
+    // Time shadow
+    text_time_layer2 = text_layer_create(GRect(2,2,140,56));
+    text_layer_set_text_color(text_time_layer2, GColorLightGray);
+    text_layer_set_background_color(text_time_layer2, GColorClear);
+    text_layer_set_font(text_time_layer2, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_BOLD_SUBSET_49)));
+    text_layer_set_text_alignment(text_time_layer2, GTextAlignmentCenter);
+    layer_add_child(time_layer, text_layer_get_layer(text_time_layer2));
+  #endif
 
   // Time
-  text_time_layer = text_layer_create(CLOCK_IN);
+  text_time_layer = text_layer_create(GRect(0,0,140,56));
   text_layer_set_text_color(text_time_layer, GColorWhite);
   text_layer_set_background_color(text_time_layer, GColorClear);
   text_layer_set_font(text_time_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_BOLD_SUBSET_49)));
   text_layer_set_text_alignment(text_time_layer, GTextAlignmentCenter);
-  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_time_layer));
+  layer_add_child(time_layer, text_layer_get_layer(text_time_layer));
 
   // Line
   line_layer = layer_create(GRect(0,0,144,168));
@@ -419,16 +440,24 @@ static void window_load(Window *window) {
   layer_add_child(scroll_layer, text_layer_get_layer(text_event_start_date_layer));
 
   // Event title
-  text_event_title_layer = text_layer_create(GRect(13, 0, 144 - 13, 27));
+  #ifdef PBL_COLOR
+    GRect title_text_xy = GRect(13, 0, 144 - 13, 27);
+  #else
+    GRect title_text_xy = GRect(1, 0, 144 - 1, 27);
+  #endif    
+  
+  text_event_title_layer = text_layer_create(title_text_xy);
   text_layer_set_text_color(text_event_title_layer, GColorWhite);
   text_layer_set_background_color(text_event_title_layer, GColorClear);
   text_layer_set_font(text_event_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   layer_add_child(scroll_layer, text_layer_get_layer(text_event_title_layer));
   
-  // Bullet calendar
-  bullet_layer = layer_create(GRect(1,3,12,20));
-  layer_set_update_proc(bullet_layer, bullet_layer_update_callback);
-  layer_add_child(scroll_layer, bullet_layer);
+  #ifdef PBL_COLOR
+    // Bullet calendar
+    bullet_layer = layer_create(GRect(1,3,12,20));
+    layer_set_update_proc(bullet_layer, bullet_layer_update_callback);
+    layer_add_child(scroll_layer, bullet_layer);
+  #endif
 
   // iPhone Battery
   g_static_state = 1;
@@ -481,6 +510,9 @@ static void update_clock_display() {
   if (g_time_text[4] == ' ')
     g_time_text[4] = '\0';
   text_layer_set_text(text_time_layer, g_time_text);
+  #ifdef PBL_COLOR
+      text_layer_set_text(text_time_layer2, g_time_text);
+  #endif
 }
 
 /*
@@ -500,7 +532,7 @@ static void clock_animation_stopped(Animation *animation, bool finished, void *d
     if (clock_animation_in == NULL) {
       GRect to_rect = CLOCK_IN;
       GRect from_rect = CLOCK_OUT;
-      clock_animation_in = property_animation_create_layer_frame(text_layer_get_layer(text_time_layer), &from_rect, &to_rect);
+      clock_animation_in = property_animation_create_layer_frame(time_layer, &from_rect, &to_rect);
       animation_set_duration((Animation*) clock_animation_in, 400);
     }
     animation_schedule((Animation*) clock_animation_in);
@@ -527,7 +559,7 @@ static void update_clock() {
   if (clock_animation_out == NULL) {
     GRect to_rect = CLOCK_OUT;
     GRect from_rect = CLOCK_IN;
-    clock_animation_out = property_animation_create_layer_frame(text_layer_get_layer(text_time_layer), &from_rect, &to_rect);
+    clock_animation_out = property_animation_create_layer_frame(time_layer, &from_rect, &to_rect);
     animation_set_duration((Animation*) clock_animation_out, 400);
     animation_set_curve((Animation*) clock_animation_out, AnimationCurveEaseInOut);
     animation_set_handlers((Animation*) clock_animation_out, (AnimationHandlers ) { .stopped = (AnimationStoppedHandler) clock_animation_stopped, }, NULL /* callback data */);

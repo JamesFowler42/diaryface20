@@ -54,8 +54,6 @@
 #define STATUS_REQUEST 1
 #define STATUS_REPLY 2
 
-#define BASIC_SIZE 21
-#define START_DATE_SIZE 18
 #define CLOSE_DATE_SIZE 6
 #define CLOSE_DAY_NAME_SIZE 10
 
@@ -75,8 +73,7 @@ typedef struct {
    bool has_location;
    char location[42];
    bool all_day;
-   char start_date[START_DATE_SIZE];
-   int32_t alarms[2];
+   char start_date[18];
    GColor color;
 } EventInternal;
 
