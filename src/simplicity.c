@@ -1,7 +1,7 @@
 /*
  * Diary Face
  *
- * Copyright (c) 2013 James Fowler/Max Baeumle
+ * Copyright (c) 2013-2015 James Fowler/Max Baeumle
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -48,6 +48,7 @@ static Layer *p_battery_layer;
 static Layer *status_layer;
 static Layer *entry_layer;
 static Layer *pebble_layer;
+static Layer *bullet_layer;
 
 static TextLayer *text_date_layer;
 static TextLayer *text_time_layer;
@@ -60,7 +61,9 @@ static struct PropertyAnimation* clock_animation_out = NULL;
 static struct PropertyAnimation* prop_animation_in = NULL;
 static struct PropertyAnimation* clock_animation_in = NULL;
 
-static InverterLayer *full_inverse_layer;
+#ifndef PBL_COLOR
+  static InverterLayer *full_inverse_layer;
+#endif
 
 static int g_last_tm_mday_date = -1;
 static int g_status_display = 0;
@@ -82,6 +85,8 @@ static int g_disp_static_entry_no = 0;
 static uint8_t battery_level;
 static bool battery_plugged;
 static bool first_tick = true;
+static GColor g_disp_static_color;
+static GColor g_static_color;
 
 /*
  * Unload and return what we have taken
@@ -95,8 +100,11 @@ static void window_unload(Window *window) {
   layer_destroy(status_layer);
   layer_destroy(entry_layer);
   layer_destroy(pebble_layer);
+  layer_destroy(bullet_layer);
 
-  inverter_layer_destroy(full_inverse_layer);
+  #ifndef PBL_COLOR
+    inverter_layer_destroy(full_inverse_layer);
+  #endif
 
   text_layer_destroy(text_date_layer);
   text_layer_destroy(text_time_layer);
@@ -147,11 +155,12 @@ static void window_unload(Window *window) {
  * Centre line callback handler
  */
 static void line_layer_update_callback(Layer *layer, GContext *ctx) {
-  graphics_context_set_stroke_color(ctx, GColorWhite);
-
+  graphics_context_set_stroke_color(ctx, TOP_LINE);
   graphics_draw_line(ctx, GPoint(0, 87), GPoint(54, 87));
-  graphics_draw_line(ctx, GPoint(0, 88), GPoint(54, 88));
   graphics_draw_line(ctx, GPoint(88, 87), GPoint(143, 87));
+    
+  graphics_context_set_stroke_color(ctx, BOTTOM_LINE); 
+  graphics_draw_line(ctx, GPoint(0, 88), GPoint(54, 88));
   graphics_draw_line(ctx, GPoint(88, 88), GPoint(143, 88));
 }
 
@@ -186,8 +195,8 @@ static void i_battery_layer_update_callback(Layer *layer, GContext *ctx) {
 
   if (g_static_state == 1 && g_static_level > 0 && g_static_level <= 100) {
     graphics_draw_bitmap_in_rect(ctx, icon_phone_battery, GRect(0, 0, 30, 15));
-    graphics_context_set_stroke_color(ctx, GColorWhite);
-    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_context_set_stroke_color(ctx, BATTERY_STROKE);
+    graphics_context_set_fill_color(ctx, BATTERY_FILL);
     graphics_fill_rect(ctx, GRect(14, 5, (uint8_t)((g_static_level / 100.0) * 11.0), 4), 0, GCornerNone);
   } else if (g_static_state == 2 || g_static_state == 3) {
     graphics_draw_bitmap_in_rect(ctx, icon_phone_battery_charge, GRect(0, 0, 30, 15));
@@ -202,8 +211,8 @@ static void p_battery_layer_update_callback(Layer *layer, GContext *ctx) {
   graphics_context_set_compositing_mode(ctx, GCompOpAssign);
   if (!battery_plugged) {
     graphics_draw_bitmap_in_rect(ctx, icon_watch_battery, GRect(0, 0, 35, 15));
-    graphics_context_set_stroke_color(ctx, GColorWhite);
-    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_context_set_stroke_color(ctx, BATTERY_STROKE);
+    graphics_context_set_fill_color(ctx, BATTERY_FILL);
     graphics_fill_rect(ctx, GRect(16, 5, (uint8_t)((battery_level / 100.0) * 11.0), 4), 0, GCornerNone);
   } else {
     graphics_draw_bitmap_in_rect(ctx, icon_watch_battery_charge, GRect(0, 0, 35, 15));
@@ -248,6 +257,15 @@ static void entry_layer_update_callback(Layer *layer, GContext *ctx) {
     graphics_draw_bitmap_in_rect(ctx, icon_entry_5, GRect(0, 0, 64, 15));
 }
 
+/*
+ * Bullet callback handler
+ */
+static void bullet_layer_update_callback(Layer *layer, GContext *ctx) {
+  graphics_context_set_compositing_mode(ctx, GCompOpSet);
+  graphics_context_set_text_color(ctx, g_disp_static_color);
+  graphics_draw_text(ctx, "•", fonts_get_system_font(FONT_KEY_GOTHIC_14), GRect(0, 0, 12, 20), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+}
+
 static void update_event_display() {
   strncpy(g_disp_event_title_static, g_event_title_static, sizeof(g_disp_event_title_static));
   strncpy(g_disp_event_start_date_static, g_event_start_date_static, sizeof(g_disp_event_start_date_static));
@@ -256,6 +274,7 @@ static void update_event_display() {
   text_layer_set_text(text_event_start_date_layer, g_disp_event_start_date_static);
   text_layer_set_text(text_event_location_layer, g_disp_location_static);
   g_disp_static_entry_no = g_static_entry_no;
+  g_disp_static_color = g_static_color;
   layer_mark_dirty(entry_layer);
 }
 
@@ -266,9 +285,13 @@ static void animation_stopped(Animation *animation, bool finished, void *data) {
   if (finished) {
     update_event_display();
 
-    if (prop_animation_in != NULL && animation_is_scheduled((struct Animation *) prop_animation_in)) {
-      animation_unschedule((struct Animation *) prop_animation_in);
+    if (prop_animation_in != NULL) {
+      if(animation_is_scheduled((struct Animation *) prop_animation_in)) {
+        animation_unschedule((struct Animation *) prop_animation_in);
+      }
+      prop_animation_in = NULL;
     }
+    
     if (prop_animation_in == NULL) {
       GRect to_rect = SCROLL_IN;
       GRect from_rect = SCROLL_OUT;
@@ -282,7 +305,7 @@ static void animation_stopped(Animation *animation, bool finished, void *data) {
 /*
  * Display update in the event area
  */
-void set_event_display(char *event_title, char *event_start_date, char *location, int num) {
+void set_event_display(char *event_title, char *event_start_date, char *location, int num, GColor color) {
 
   // Already showing nothing and being asked to show nothing again is not
   // a good reason to animate anything
@@ -294,14 +317,19 @@ void set_event_display(char *event_title, char *event_start_date, char *location
   strncpy(g_event_start_date_static, event_start_date, sizeof(g_event_start_date_static));
   strncpy(g_location_static, location, sizeof(g_location_static));
   g_static_entry_no = num;
+  g_static_color = color;
+  
 
   if (!get_config_data()->animate) {
     update_event_display();
     return;
   }
 
-  if (prop_animation_out != NULL && animation_is_scheduled((struct Animation *) prop_animation_out)) {
-    animation_unschedule((struct Animation *) prop_animation_out);
+  if (prop_animation_out != NULL) {
+    if (animation_is_scheduled((struct Animation *) prop_animation_out)) {
+      animation_unschedule((struct Animation *) prop_animation_out);
+    }
+    prop_animation_out = NULL;
   }
 
   if (prop_animation_out == NULL) {
@@ -323,12 +351,14 @@ static void pebble_layer_update_callback(Layer *layer, GContext *ctx) {
   graphics_draw_bitmap_in_rect(ctx, icon_pebble, GRect(0, 0, 27, 8));
 }
 
-/*
- * Screen inverse setting
- */
-void set_screen_inverse_setting() {
-  layer_set_hidden(inverter_layer_get_layer(full_inverse_layer), !get_config_data()->invert);
-}
+#ifndef PBL_COLOR
+  /*
+   * Screen inverse setting
+   */
+  void set_screen_inverse_setting() {
+    layer_set_hidden(inverter_layer_get_layer(full_inverse_layer), !get_config_data()->invert);
+  }
+#endif
 
 /*
  * Display initialisation and further setup 
@@ -352,7 +382,7 @@ static void window_load(Window *window) {
 
   // Date
   text_date_layer = text_layer_create(GRect(0, 94, 143, 168-94));
-  text_layer_set_text_color(text_date_layer, GColorWhite);
+  text_layer_set_text_color(text_date_layer, DATE_COLOR);
   text_layer_set_background_color(text_date_layer, GColorClear);
   text_layer_set_font(text_date_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
   text_layer_set_text_alignment(text_date_layer, GTextAlignmentCenter);
@@ -389,11 +419,16 @@ static void window_load(Window *window) {
   layer_add_child(scroll_layer, text_layer_get_layer(text_event_start_date_layer));
 
   // Event title
-  text_event_title_layer = text_layer_create(GRect(1, 0, 144 - 1, 27));
+  text_event_title_layer = text_layer_create(GRect(13, 0, 144 - 13, 27));
   text_layer_set_text_color(text_event_title_layer, GColorWhite);
   text_layer_set_background_color(text_event_title_layer, GColorClear);
   text_layer_set_font(text_event_title_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   layer_add_child(scroll_layer, text_layer_get_layer(text_event_title_layer));
+  
+  // Bullet calendar
+  bullet_layer = layer_create(GRect(1,3,12,20));
+  layer_set_update_proc(bullet_layer, bullet_layer_update_callback);
+  layer_add_child(scroll_layer, bullet_layer);
 
   // iPhone Battery
   g_static_state = 1;
@@ -425,15 +460,17 @@ static void window_load(Window *window) {
   layer_set_update_proc(pebble_layer, pebble_layer_update_callback);
   layer_add_child(window_get_root_layer(window), pebble_layer);
 
-  // Configurable inverse
-  full_inverse_layer = inverter_layer_create(GRect(0, 0, 144, 168));
-  layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(full_inverse_layer));
-  set_screen_inverse_setting();
+  #ifndef PBL_COLOR
+    // Configurable inverse
+    full_inverse_layer = inverter_layer_create(GRect(0, 0, 144, 168));
+    layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(full_inverse_layer));
+    set_screen_inverse_setting();
+  #endif
 
   // Put everything in an initial state
   set_battery(1, 50);
   set_status(STATUS_REQUEST);
-  set_event_display("", "", "", 0);
+  set_event_display("", "", "", 0, GColorBlack);
 
   // Make sure the timers start but don't all go off together
   calendar_init();
@@ -453,8 +490,11 @@ static void clock_animation_stopped(Animation *animation, bool finished, void *d
   if (finished) {
     update_clock_display();
 
-    if (clock_animation_in != NULL && animation_is_scheduled((struct Animation *) clock_animation_in)) {
-      animation_unschedule((struct Animation *) clock_animation_in);
+    if (clock_animation_in != NULL) {
+      if (animation_is_scheduled((struct Animation *) clock_animation_in)) {
+        animation_unschedule((struct Animation *) clock_animation_in);
+      }
+      clock_animation_in = NULL;
     }
 
     if (clock_animation_in == NULL) {
@@ -477,8 +517,11 @@ static void update_clock() {
     return;
   }
 
-  if (clock_animation_out != NULL && animation_is_scheduled((struct Animation *) clock_animation_out)) {
+  if (clock_animation_out != NULL) {
+    if (animation_is_scheduled((struct Animation *) clock_animation_out)) {
     animation_unschedule((struct Animation *) clock_animation_out);
+    }
+    clock_animation_out = NULL;
   }
 
   if (clock_animation_out == NULL) {
@@ -558,7 +601,9 @@ static void init(void) {
 
   window = window_create();
   window_set_background_color(window, GColorBlack);
-  window_set_fullscreen(window, true);
+  #ifndef PBL_COLOR
+    window_set_fullscreen(window, true);
+  #endif
   window_set_window_handlers(window, (WindowHandlers ) { .load = window_load, .unload = window_unload });
 
   const int inbound_size = app_message_inbox_size_maximum();

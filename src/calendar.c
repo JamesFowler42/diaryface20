@@ -1,7 +1,7 @@
 /*
  * Diary Face
  *
- * Copyright (c) 2013 James Fowler/Max Baeumle
+ * Copyright (c) 2013-2015 James Fowler/Max Baeumle
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,8 +25,8 @@
 #include "pebble.h"
 #include "common.h"
 
-static Event g_events[MAX_EVENTS];
-static Event g_rot_events[ROT_MAX];
+static EVENT_TYPE g_events[MAX_EVENTS];
+static EventInternal g_rot_events[ROT_MAX];
 static BatteryStatus g_battery_status;
 
 static uint8_t g_count;
@@ -103,27 +103,35 @@ static void request_persist_config() {
   }
 }
 
-
 /*
  * Make a calendar request
  */
-static void calendar_request() {
+#ifdef TEST_MODE
+  static void calendar_request() {
+    populate_dummy_data(g_events);
+    calendar_refresh_queued = true;
+    rotate_tick = rotate_change + 1;
+    g_max_entries = 2;
+  }
+#else  
+  static void calendar_request() {
 
-  if (!bluetooth_connection_service_peek())
-    return;
+    if (!bluetooth_connection_service_peek())
+      return;
 
-  DictionaryIterator *iter;
-  app_message_outbox_begin(&iter);
-  if (!iter)
-    return;
+    DictionaryIterator *iter;
+    app_message_outbox_begin(&iter);
+    if (!iter)
+      return;
 
-  dict_write_int8(iter, REQUEST_CALENDAR_KEY, -1);
-  dict_write_uint8(iter, CLOCK_STYLE_KEY, clock_is_24h_style() ? CLOCK_STYLE_24H : CLOCK_STYLE_12H);
-  dict_write_end(iter);
-  g_count = 0;
-  g_received_rows = 0;
-  app_message_outbox_send();
-}
+    dict_write_int8(iter, REQUEST_CALENDAR_KEY, -1);
+    dict_write_uint8(iter, CALENDAR_RESPONSE_FORMAT_KEY, CALENDAR_RESPONSE_FORMAT_SELECTED);
+    dict_write_end(iter);
+    g_count = 0;
+    g_received_rows = 0;
+    app_message_outbox_send();
+  }
+#endif
 
 /*
  * Make a battery status request
@@ -165,7 +173,7 @@ static void config_request() {
  * Get the calendar running
  */
 void calendar_init() {
-  memset(&g_events, 0, sizeof(Event) * MAX_EVENTS);
+  memset(&g_events, 0, sizeof(EVENT_TYPE) * MAX_EVENTS);
 }
 
 /*
@@ -245,13 +253,41 @@ static void modify_calendar_time(char *output, int outlen, char *date, bool all_
 }
 
 /*
+ * Convert from transport data structure to internal structure
+ */
+static void map_if_data_to_internal(EventInternal *rot, EVENT_TYPE *iface) {
+  strncpy(rot->title, iface->title, member_size(EVENT_TYPE,title));
+  rot->has_location = iface->has_location;
+  strncpy(rot->location, iface->location, member_size(EVENT_TYPE,location));
+  rot->all_day = iface->all_day;
+  rot->alarms[0] = iface->alarms[0];
+  rot->alarms[1] = iface->alarms[1];
+  #ifdef PBL_COLOR
+    if (iface->calendar_has_color) {
+      rot->color = GColorFromRGB(iface->calendar_color[0],iface->calendar_color[1],iface->calendar_color[2] );
+    } else {
+      rot->color = DEFAULT_CALENDAR_COLOR;
+    }
+  #endif
+  struct tm *start_date_tm = localtime(&(iface->start_date));  
+  // MM/dd(/yy) H:mm
+  if (clock_is_24h_style()) {
+    strftime(rot->start_date, START_DATE_SIZE, "%m/%d/%y %H:%M", start_date_tm); 
+  } else {
+    strftime(rot->start_date, START_DATE_SIZE, "%m/%d/%y %l:%M %P", start_date_tm); 
+  }
+}
+
+/*
  * Prepare events for rotation display
  */
 static void process_rot_events() {
   char event_date[BASIC_SIZE];
   if (g_max_entries == 0)
     return;
-  memcpy(&g_rot_events, &g_events, sizeof(Event) * ROT_MAX);
+  for (uint8_t i = 0; i < ROT_MAX; i++) {
+    map_if_data_to_internal(&g_rot_events[i], &g_events[i]);
+  }
   uint8_t limit = ROT_MAX < g_max_entries ? ROT_MAX : g_max_entries;
   for (uint8_t i = 0; i < limit; i++) {
     // Process the date into something nicer to read
@@ -264,7 +300,7 @@ static void process_rot_events() {
  * Clear the event display area
  */
 static void clear_event() {
-  set_event_display("", "", "", 0);
+  set_event_display("", "", "", 0, GColorBlack);
 }
 
 /*
@@ -272,7 +308,7 @@ static void clear_event() {
  */
 static void show_event(uint8_t num) {
   uint8_t i = num - 1;
-  set_event_display(g_rot_events[i].title, g_rot_events[i].start_date, g_rot_events[i].has_location ? g_rot_events[i].location : "", num);
+  set_event_display(g_rot_events[i].title, g_rot_events[i].start_date, g_rot_events[i].has_location ? g_rot_events[i].location : "", num, g_rot_events[i].color);
 }
 
 /*
@@ -303,7 +339,7 @@ void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, voi
  * Messages incoming from the phone
  */
 void received_message(DictionaryIterator *received, void *context) {
-  Event temp_event;
+  EVENT_TYPE temp_event;
 
   Tuple *tuple = dict_find(received, RECONNECT_KEY);
   if (tuple) {
@@ -326,12 +362,12 @@ void received_message(DictionaryIterator *received, void *context) {
     }
 
     while (i < g_count && j < tuple->length) {
-      memcpy(&temp_event, &tuple->value->data[j], sizeof(Event));
+      memcpy(&temp_event, &tuple->value->data[j], sizeof(EVENT_TYPE));
       if (temp_event.index < MAX_EVENTS)
-        memcpy(&g_events[temp_event.index], &temp_event, sizeof(Event));
+        memcpy(&g_events[temp_event.index], &temp_event, sizeof(EVENT_TYPE));
 
       i++;
-      j += sizeof(Event);
+      j += sizeof(EVENT_TYPE);
     }
 
     g_received_rows = i;
@@ -356,13 +392,15 @@ void received_message(DictionaryIterator *received, void *context) {
 
   if (tuple) {
     // read specified keys
-    tuple = dict_find(received, SETTINGS_KEY_INVERSE);
+    #ifndef PBL_COLOR
+      tuple = dict_find(received, SETTINGS_KEY_INVERSE);
 
-    if (tuple) { // be prepared to get null
-      config_data.invert = tuple->value->uint8 != 0;
-      request_persist_config();
-      set_screen_inverse_setting();
-    }
+      if (tuple) { // be prepared to get null
+        config_data.invert = tuple->value->uint8 != 0;
+        request_persist_config();
+        set_screen_inverse_setting();
+      }
+    #endif
 
     tuple = dict_find(received, SETTINGS_KEY_ANIMATE);
 
