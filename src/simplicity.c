@@ -389,7 +389,7 @@ static void window_load(Window *window) {
   icon_watch_battery_charge = gbitmap_create_with_resource(RESOURCE_ID_WATCH_BATTERY_CHARGE_ICON);
 
   // Date
-  text_date_layer = text_layer_create(GRect(0, 94, 143, 168-94));
+  text_date_layer = text_layer_create(GRect(-5, 94, 154, 168-94));
   text_layer_set_text_color(text_date_layer, DATE_COLOR);
   text_layer_set_background_color(text_date_layer, GColorClear);
   text_layer_set_font(text_date_layer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_CONDENSED_21)));
@@ -597,6 +597,10 @@ void date_update() {
   }
 
   strftime(g_date_text, sizeof(g_date_text), date_format, tick_time);
+  #ifdef TEST_MODE
+    strcpy(g_date_text, "Wed, May 18 (28)");
+  #endif
+  
   text_layer_set_text(text_date_layer, g_date_text);
 
 }
