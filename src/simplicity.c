@@ -297,6 +297,9 @@ static void animation_stopped(Animation *animation, bool finished, void *data) {
       if(animation_is_scheduled((struct Animation *) prop_animation_in)) {
         animation_unschedule((struct Animation *) prop_animation_in);
       }
+      #ifdef PBL_PLATFORM_APLITE
+          property_animation_destroy(prop_animation_in);
+      #endif
       prop_animation_in = NULL;
     }
     
@@ -337,6 +340,9 @@ void set_event_display(char *event_title, char *event_start_date, char *location
     if (animation_is_scheduled((struct Animation *) prop_animation_out)) {
       animation_unschedule((struct Animation *) prop_animation_out);
     }
+    #ifdef PBL_PLATFORM_APLITE
+      property_animation_destroy(prop_animation_out);
+    #endif
     prop_animation_out = NULL;
   }
 
@@ -526,6 +532,9 @@ static void clock_animation_stopped(Animation *animation, bool finished, void *d
       if (animation_is_scheduled((struct Animation *) clock_animation_in)) {
         animation_unschedule((struct Animation *) clock_animation_in);
       }
+      #ifdef PBL_PLATFORM_APLITE
+        property_animation_destroy(clock_animation_in);
+      #endif
       clock_animation_in = NULL;
     }
 
@@ -553,6 +562,9 @@ static void update_clock() {
     if (animation_is_scheduled((struct Animation *) clock_animation_out)) {
     animation_unschedule((struct Animation *) clock_animation_out);
     }
+    #ifdef PBL_PLATFORM_APLITE
+      property_animation_destroy(clock_animation_out);
+    #endif
     clock_animation_out = NULL;
   }
 
